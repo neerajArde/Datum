@@ -561,3 +561,21 @@ def test_thread_lifecycle(tmp_path, monkeypatch):
     threads.delete(t["id"])
     assert threads.load(t["id"]) is None
     assert threads.list_threads() == []
+
+
+def test_spaces_keep_visitors_apart(tmp_path, monkeypatch):
+    # on a public deploy every browser has its own space; one visitor never sees another's papers
+    import threads
+    monkeypatch.setattr(threads, "THREADS_DIR", str(tmp_path / "threads"))
+    alice, bob = threads.new_space_id(), threads.new_space_id()
+    a = threads.new_thread(alice)
+    threads.add_paper(a, "Inal_2017.pdf", b"%PDF-1")
+    threads.save(a)
+    assert [t["id"] for t in threads.list_threads(alice)] == [a["id"]]
+    assert threads.list_threads(bob) == []
+    assert threads.load(a["id"], bob) is None            # knowing the thread id isn't enough
+    threads.delete(a["id"], bob)                         # bob can't delete it either
+    assert threads.load(a["id"], alice) is not None
+    assert threads.list_threads("") == []                # the shared local list doesn't show space folders
+    assert threads.clean_space("../../etc") == ""        # junk in the url can't escape the folder
+    assert threads.load("../" + alice, "") is None

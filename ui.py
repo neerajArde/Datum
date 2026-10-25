@@ -47,6 +47,11 @@ header[data-testid="stHeader"] { background: transparent !important; }
 [data-testid="stSidebar"] { background: var(--sunk) !important; border-right: 1px solid var(--line); }
 .dt-side-mark { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); margin: 0 0 .9rem .35rem; }
 .dt-side-mark .dot { display: inline-block; width: .42em; height: .42em; background: var(--highlight); border-radius: 2px; margin-left: .08em; }
+.dt-side-mark a { color: inherit !important; text-decoration: none !important; }
+.stApp .dt-side-note { font-size: .74rem; line-height: 1.4; color: var(--faint); margin: 1.2rem .4rem .2rem; }
+.stApp .dt-side-link { margin: .5rem .4rem 0; font-size: .8rem; }
+.stApp .dt-side-link a { color: var(--muted, #5A636E) !important; text-decoration: none !important; }
+.stApp .dt-side-link a:hover { color: var(--ink) !important; }
 .stApp .dt-side-label { font-size: .74rem; color: var(--faint); margin: 1.1rem 0 .3rem .4rem; }
 [data-testid="stSidebar"] .stButton button { justify-content: flex-start !important; text-align: left; font-weight: 500; font-size: .9rem;
   border-radius: 8px !important; padding: .38rem .6rem !important; min-height: 0 !important; box-shadow: none !important; }
@@ -172,8 +177,20 @@ STATUS_WORDS = {
 }
 
 
-def sidebar_mark():
-    return '<div class="dt-side-mark">Datum<span class="dot"></span></div>'
+def sidebar_mark(link=""):
+    mark = 'Datum<span class="dot"></span>'
+    if link:
+        mark = '<a href="' + html.escape(link) + '" target="_blank" rel="noopener" title="About Datum">' + mark + "</a>"
+    return '<div class="dt-side-mark">' + mark + "</div>"
+
+
+def side_note(text):
+    return '<div class="dt-side-note">' + html.escape(text) + "</div>"
+
+
+def side_link(text, link):
+    return ('<div class="dt-side-link"><a href="' + html.escape(link) + '" target="_blank" rel="noopener">'
+            + html.escape(text) + " ↗</a></div>")
 
 
 def side_label(text):

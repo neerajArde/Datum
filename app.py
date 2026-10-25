@@ -66,7 +66,40 @@ def get_secret(name):
                 return str(st.secrets.get(name, ""))
             except Exception:
                 return ""
+    if not is_local():
+        # on streamlit cloud the secrets live outside the repo folder
+        try:
+            return str(st.secrets.get(name, ""))
+        except Exception:
+            return ""
     return ""
+
+
+LANDING_URL = "https://neerajarde.github.io/datum/"
+
+
+def is_local():
+    # True when the app runs on this laptop (localhost), False on a public deploy
+    try:
+        host = st.context.headers.get("Host", "") or ""
+    except Exception:
+        host = ""
+    host = host.split(":")[0].strip().lower()
+    return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]")
+
+
+def pick_space():
+    # local: one shared folder (it's your laptop). public: each browser gets its own space,
+    # kept in the url (?w=...) so a reload still finds the threads.
+    mode = os.environ.get("DATUM_SPACES", "").lower()
+    if mode == "shared" or (mode != "private" and is_local()):
+        return ""
+    space = threads.clean_space(st.query_params.get("w", ""))
+    if space == "":
+        space = threads.clean_space(st.session_state.get("space", "")) or threads.new_space_id()
+        st.query_params["w"] = space
+    st.session_state["space"] = space
+    return space
 
 
 # ---------------------------------------------------------
@@ -308,10 +341,11 @@ def run_extraction(thread, settings):
 # ---------------------------------------------------------
 providers, provider_notes = build_providers(get_secret)
 
-all_threads = threads.list_threads()
+space = pick_space()
+all_threads = threads.list_threads(space)
 current = None
 if st.session_state.get("thread_id"):
-    current = threads.load(st.session_state["thread_id"])
+    current = threads.load(st.session_state["thread_id"], space)
 if current is None:
     if len(all_threads) > 0:
         # open the most recent thread that has work in it, not an empty one
@@ -321,7 +355,7 @@ if current is None:
                 current = thread
                 break
     else:
-        current = threads.new_thread()
+        current = threads.new_thread(space)
         all_threads = [current]
     st.session_state["thread_id"] = current["id"]
 
@@ -329,12 +363,12 @@ if current is None:
 # sidebar: threads, then settings
 # ---------------------------------------------------------
 with st.sidebar:
-    st.markdown(ui.sidebar_mark(), unsafe_allow_html=True)
+    st.markdown(ui.sidebar_mark(LANDING_URL), unsafe_allow_html=True)
 
     if st.button("New thread", key="new_thread", icon=":material/edit_square:", width="stretch"):
         empty = len(current["papers"]) == 0 and len(current["runs"]) == 0
         if not empty:
-            fresh = threads.new_thread()
+            fresh = threads.new_thread(space)
             st.session_state["thread_id"] = fresh["id"]
         st.rerun()
 
@@ -358,7 +392,7 @@ with st.sidebar:
                     threads.save(thread)
                     st.rerun()
                 if st.button("Delete thread", key="delete_" + thread["id"], icon=":material/delete:"):
-                    threads.delete(thread["id"])
+                    threads.delete(thread["id"], space)
                     if is_open:
                         st.session_state["thread_id"] = None
                     st.rerun()
@@ -375,6 +409,10 @@ with st.sidebar:
         scan_all = st.toggle("Scan every page", value=False, key="scan_all",
                              help="Slower. Use it if a paper words things differently from your properties.")
         use_cache = st.toggle("Reuse earlier results", value=True, key="use_cache")
+
+    if space != "":
+        st.markdown(ui.side_note("Your threads are private to this link. Bookmark it to come back."), unsafe_allow_html=True)
+    st.markdown(ui.side_link("About Datum", LANDING_URL), unsafe_allow_html=True)
 
 settings = {}
 settings["providers"] = providers

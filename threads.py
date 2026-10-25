@@ -5,6 +5,11 @@
 #   .datum_threads/<thread id>/thread.json   <- title, papers, every run and its results
 #   .datum_threads/<thread id>/<paper>.pdf   <- the uploaded pdfs
 # the folder is ignored by git, so papers and results never end up on github.
+#
+# spaces: on a public deploy every browser gets its own space (a random id kept in the url),
+# so visitors never see each other's papers:
+#   .datum_threads/<space>/<thread id>/...
+# running locally uses space "" = the plain folder above, shared by your own tabs.
 
 import json
 import os
@@ -16,8 +21,31 @@ import uuid
 THREADS_DIR = os.environ.get("DATUM_THREADS_DIR", ".datum_threads")
 
 
-def thread_folder(thread_id):
-    return os.path.join(THREADS_DIR, thread_id)
+def clean_space(space):
+    # a space id is only ever lowercase hex - anything else falls back to "no space"
+    space = str(space or "")
+    if re.fullmatch(r"[a-f0-9]{8,32}", space):
+        return space
+    return ""
+
+
+def new_space_id():
+    return uuid.uuid4().hex[:16]
+
+
+def space_folder(space=""):
+    space = clean_space(space)
+    if space == "":
+        return THREADS_DIR
+    return os.path.join(THREADS_DIR, space)
+
+
+def thread_folder(thread_id, space=""):
+    return os.path.join(space_folder(space), thread_id)
+
+
+def folder_of(thread):
+    return thread_folder(thread["id"], thread.get("space", ""))
 
 
 def safe_file_name(name):
@@ -28,9 +56,10 @@ def safe_file_name(name):
     return cleaned
 
 
-def new_thread():
+def new_thread(space=""):
     thread = {}
     thread["id"] = uuid.uuid4().hex[:12]
+    thread["space"] = clean_space(space)
     thread["title"] = "New thread"
     thread["created"] = time.time()
     thread["updated"] = time.time()
@@ -38,14 +67,14 @@ def new_thread():
     thread["properties"] = ""     # what to extract, kept per thread
     thread["papers"] = []   # list of {"name": original name, "file": saved file name, "size": bytes}
     thread["runs"] = []     # list of {"properties", "papers", "result", "created"}
-    os.makedirs(thread_folder(thread["id"]), exist_ok=True)
+    os.makedirs(folder_of(thread), exist_ok=True)
     save(thread)
     return thread
 
 
 def save(thread):
     thread["updated"] = time.time()
-    folder = thread_folder(thread["id"])
+    folder = folder_of(thread)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "thread.json")
     temp_path = path + ".tmp"
@@ -54,24 +83,29 @@ def save(thread):
     os.replace(temp_path, path)
 
 
-def load(thread_id):
-    path = os.path.join(thread_folder(thread_id), "thread.json")
+def load(thread_id, space=""):
+    if not re.fullmatch(r"[a-f0-9]{12}", str(thread_id)):
+        return None
+    path = os.path.join(thread_folder(thread_id, space), "thread.json")
     if not os.path.exists(path):
         return None
     try:
         with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
+            thread = json.load(file)
     except Exception:
         return None
+    thread["space"] = clean_space(space)
+    return thread
 
 
-def list_threads():
-    # newest first
+def list_threads(space=""):
+    # newest first. thread ids are 12 hex chars, space ids 16, so the two never mix up.
     threads = []
-    if not os.path.isdir(THREADS_DIR):
+    folder = space_folder(space)
+    if not os.path.isdir(folder):
         return threads
-    for thread_id in os.listdir(THREADS_DIR):
-        thread = load(thread_id)
+    for thread_id in os.listdir(folder):
+        thread = load(thread_id, space)
         if thread is not None:
             threads.append(thread)
     threads.sort(key=lambda item: item.get("updated", 0), reverse=True)
@@ -81,7 +115,7 @@ def list_threads():
 def add_paper(thread, name, pdf_bytes):
     # same name uploaded again = replace it, so a thread never holds two copies
     file_name = safe_file_name(name)
-    with open(os.path.join(thread_folder(thread["id"]), file_name), "wb") as file:
+    with open(os.path.join(folder_of(thread), file_name), "wb") as file:
         file.write(pdf_bytes)
     for paper in thread["papers"]:
         if paper["name"] == name:
@@ -100,7 +134,7 @@ def remove_paper(thread, name):
     kept = []
     for paper in thread["papers"]:
         if paper["name"] == name:
-            path = os.path.join(thread_folder(thread["id"]), paper["file"])
+            path = os.path.join(folder_of(thread), paper["file"])
             if os.path.exists(path):
                 os.remove(path)
         else:
@@ -124,8 +158,10 @@ def update_auto_title(thread):
         thread["title"] = names[0] + " + " + str(len(names) - 1) + " more"
 
 
-def delete(thread_id):
-    folder = thread_folder(thread_id)
+def delete(thread_id, space=""):
+    if not re.fullmatch(r"[a-f0-9]{12}", str(thread_id)):
+        return
+    folder = thread_folder(thread_id, space)
     # only ever delete folders inside our own threads folder
     if os.path.abspath(folder).startswith(os.path.abspath(THREADS_DIR) + os.sep) and os.path.isdir(folder):
         shutil.rmtree(folder)
@@ -135,7 +171,7 @@ def paper_bytes(thread):
     # {original name: pdf bytes} for every paper in the thread
     found = {}
     for paper in thread["papers"]:
-        path = os.path.join(thread_folder(thread["id"]), paper["file"])
+        path = os.path.join(folder_of(thread), paper["file"])
         if os.path.exists(path):
             with open(path, "rb") as file:
                 found[paper["name"]] = file.read()
