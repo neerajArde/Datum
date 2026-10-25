@@ -80,18 +80,29 @@ def remove_duplicates(rows):
     return unique
 
 
+# the five stages the ui shows, in order. each one is reported when it REALLY starts
+STAGES = ["ingest", "filter", "extract", "verify", "assemble"]
+
+
 def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
-        filter_pages=True, use_cache=True, on_progress=None):
+        filter_pages=True, use_cache=True, on_progress=None, on_stage=None):
     # papers: list of {"name": file name, "bytes": pdf bytes}
     # on_progress(done, total, message): called from THIS thread, safe for streamlit
+    # on_stage(stage, detail): called when a stage starts or makes progress (see STAGES)
     start_time = time.time()
     router = new_router(providers)
     words = property_words(target_properties)
 
-    # ---- stage 1 + 2: read every paper, reuse cached answers, plan the llm jobs ----
+    def stage(name, detail):
+        if on_stage is not None:
+            on_stage(name, detail)
+
+    # ---- stage 1, ingest: read every pdf, reuse cached answers where we can ----
     infos = []
-    jobs = []
-    for paper in papers:
+    count = len(papers)
+    for index in range(count):
+        paper = papers[index]
+        stage("ingest", "Reading " + paper["name"] + " (" + str(index + 1) + " of " + str(count) + ")")
         info = {}
         info["name"] = paper["name"]
         info["pages"] = read_pages(paper["bytes"])
@@ -104,21 +115,39 @@ def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
         cached_rows = None
         if use_cache:
             cached_rows = cache.load(info["cache_key"])
-
         if cached_rows is not None:
             info["raw_rows"] = cached_rows
             info["from_cache"] = True
-        else:
-            chunks, pages_kept = make_chunks(info["pages"], words, filter_pages)
-            info["pages_sent"] = pages_kept
-            for chunk in chunks:
-                jobs.append((len(infos), chunk))
-
         infos.append(info)
 
-    # ---- stage 3: send the llm jobs in parallel ----
+    # ---- stage 2, filter: keep only the parts of pages that mention the properties ----
+    jobs = []
+    pages_total = 0
+    pages_kept_total = 0
+    for paper_index in range(len(infos)):
+        info = infos[paper_index]
+        if info["from_cache"]:
+            continue
+        stage("filter", "Finding relevant pages in " + info["name"])
+        chunks, pages_kept = make_chunks(info["pages"], words, filter_pages)
+        info["pages_sent"] = pages_kept
+        pages_total = pages_total + len(info["pages"])
+        pages_kept_total = pages_kept_total + pages_kept
+        for chunk in chunks:
+            jobs.append((paper_index, chunk))
+    reused = sum(1 for info in infos if info["from_cache"])
+    if pages_total > 0:
+        stage("filter", "Kept " + str(pages_kept_total) + " of " + str(pages_total) + " pages")
+    else:
+        stage("filter", "All " + str(reused) + " paper(s) already read before")
+
+    # ---- stage 3, extract: send the llm jobs in parallel ----
     total = len(jobs)
     done = 0
+    if total > 0:
+        stage("extract", "Extracting values · 0 of " + str(total) + " parts")
+    else:
+        stage("extract", "Reusing earlier results")
     if on_progress is not None:
         on_progress(0, total, "starting")
 
@@ -146,6 +175,7 @@ def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
                     info["failures"].extend(failures)
 
                     done = done + 1
+                    stage("extract", "Extracting values · " + str(done) + " of " + str(total) + " parts")
                     if on_progress is not None:
                         message = info["name"] + " · pages " + ", ".join(str(p) for p in chunk["pages"])
                         on_progress(done, total, message)
@@ -155,7 +185,9 @@ def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
         if use_cache and not info["from_cache"] and len(info["failures"]) == 0:
             cache.save(info["cache_key"], info["raw_rows"])
 
-    # ---- stage 4: verify every row against its own paper ----
+    # ---- stage 4, verify: check every row against its own paper, in plain code ----
+    value_count = sum(len(info["raw_rows"]) for info in infos)
+    stage("verify", "Checking " + str(value_count) + " values against the PDFs")
     table = []
     for info in infos:
         materials = []
@@ -164,6 +196,9 @@ def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
         for raw in info["raw_rows"]:
             table.append(verify_row(raw, info["pages"], info["name"], target_properties, materials))
     table = remove_duplicates(table)
+
+    # ---- stage 5, assemble: one table plus the numbers behind it ----
+    stage("assemble", "Building the table")
 
     # ---- stats for the ui (and for the "how fast is it" slide) ----
     failures = []

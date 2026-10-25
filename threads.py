@@ -9,6 +9,7 @@
 import json
 import os
 import re
+import shutil
 import time
 import uuid
 
@@ -33,7 +34,9 @@ def new_thread():
     thread["title"] = "New thread"
     thread["created"] = time.time()
     thread["updated"] = time.time()
-    thread["papers"] = []   # list of {"name": original name, "file": saved file name}
+    thread["auto_title"] = True   # title follows the file names until the researcher renames it
+    thread["properties"] = ""     # what to extract, kept per thread
+    thread["papers"] = []   # list of {"name": original name, "file": saved file name, "size": bytes}
     thread["runs"] = []     # list of {"properties", "papers", "result", "created"}
     os.makedirs(thread_folder(thread["id"]), exist_ok=True)
     save(thread)
@@ -83,11 +86,49 @@ def add_paper(thread, name, pdf_bytes):
     for paper in thread["papers"]:
         if paper["name"] == name:
             paper["file"] = file_name
+            paper["size"] = len(pdf_bytes)
             return
     paper = {}
     paper["name"] = name
     paper["file"] = file_name
+    paper["size"] = len(pdf_bytes)
     thread["papers"].append(paper)
+    update_auto_title(thread)
+
+
+def remove_paper(thread, name):
+    kept = []
+    for paper in thread["papers"]:
+        if paper["name"] == name:
+            path = os.path.join(thread_folder(thread["id"]), paper["file"])
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            kept.append(paper)
+    thread["papers"] = kept
+    update_auto_title(thread)
+
+
+def update_auto_title(thread):
+    # default name = the file names the researcher uploaded
+    if not thread.get("auto_title", True):
+        return
+    names = []
+    for paper in thread["papers"]:
+        names.append(os.path.splitext(paper["name"])[0])
+    if len(names) == 0:
+        thread["title"] = "New thread"
+    elif len(names) == 1:
+        thread["title"] = names[0]
+    else:
+        thread["title"] = names[0] + " + " + str(len(names) - 1) + " more"
+
+
+def delete(thread_id):
+    folder = thread_folder(thread_id)
+    # only ever delete folders inside our own threads folder
+    if os.path.abspath(folder).startswith(os.path.abspath(THREADS_DIR) + os.sep) and os.path.isdir(folder):
+        shutil.rmtree(folder)
 
 
 def paper_bytes(thread):
@@ -108,10 +149,6 @@ def add_run(thread, properties, paper_names, result):
     run["result"] = result
     run["created"] = time.time()
     thread["runs"].append(run)
-
-    # the first run names the thread: "Inal 2017 · μC*, C*"
-    if thread["title"] == "New thread":
-        thread["title"] = make_title(paper_names, properties)
 
 
 def make_title(paper_names, properties):
@@ -134,3 +171,4 @@ def rename(thread, title):
     title = title.strip()
     if title != "":
         thread["title"] = title[:60]
+        thread["auto_title"] = False

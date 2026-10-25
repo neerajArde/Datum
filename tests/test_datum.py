@@ -522,3 +522,42 @@ def test_scorer_does_not_confuse_similar_polymer_names():
     assert same_material("PEDOT:PSS + EG19", "PEDOT:PSS + EG")
     assert not same_material("p(g2T-TT)", "p(g2T-T)")
     assert not same_material("PEDOT:PSS", "PEDOT:PSS + EG")
+
+
+# ---------------- live stages for the ui ----------------
+def test_stages_are_reported_in_order_from_real_events(paper):
+    seen = []
+    pipeline.run([paper], PROPERTIES, [provider("Fake", fake_answer)], on_stage=lambda name, detail: seen.append(name))
+    order = []
+    for name in seen:
+        if name not in order:
+            order.append(name)
+    assert order == pipeline.STAGES
+    # the second run is served from cache: stages still run in order, extract says it reused
+    details = []
+    pipeline.run([paper], PROPERTIES, [provider("Fake", fake_answer)], on_stage=lambda name, detail: details.append((name, detail)))
+    assert ("extract", "Reusing earlier results") in details
+
+
+# ---------------- threads (saved to disk) ----------------
+def test_thread_lifecycle(tmp_path, monkeypatch):
+    import threads
+    monkeypatch.setattr(threads, "THREADS_DIR", str(tmp_path / "threads"))
+    t = threads.new_thread()
+    assert t["title"] == "New thread"
+    threads.add_paper(t, "Inal_2017.pdf", b"%PDF-1")
+    threads.add_paper(t, "PNAS_2016.pdf", b"%PDF-2")
+    assert t["title"] == "Inal_2017 + 1 more"          # default name = the file names
+    threads.remove_paper(t, "PNAS_2016.pdf")
+    assert t["title"] == "Inal_2017"
+    threads.rename(t, "OECT benchmark")
+    threads.add_paper(t, "Extra.pdf", b"%PDF-3")
+    assert t["title"] == "OECT benchmark"              # a chosen name is never overwritten
+    t["properties"] = "μC*"
+    threads.save(t)
+    again = threads.load(t["id"])                        # survives a reload
+    assert again["title"] == "OECT benchmark" and again["properties"] == "μC*"
+    assert sorted(threads.paper_bytes(again).keys()) == ["Extra.pdf", "Inal_2017.pdf"]
+    threads.delete(t["id"])
+    assert threads.load(t["id"]) is None
+    assert threads.list_threads() == []
