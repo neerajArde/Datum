@@ -22,6 +22,11 @@
     --verified: #3FA66B;
     --review: #D19A2E;
     --flagged: #D2514C;
+    --glow-gold: #E9D5AE;
+    --glow-lilac: #C6B5ED;
+    --glow-blue: #A7C9EE;
+    --prism-red: rgba(227, 123, 143, .25);
+    --prism-blue: rgba(100, 156, 237, .30);
     --sans: 'Schibsted Grotesk', system-ui, sans-serif;
     --serif: 'Newsreader', Georgia, serif;
     --mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -150,6 +155,105 @@
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
+
+  /* Optical layers stay behind content; no images or external effects. */
+  nav { border-top: 1px solid rgba(255,255,255,.85); box-shadow: inset 0 1px 10px rgba(255,255,255,.4), 0 8px 32px rgba(18,26,35,.035); }
+  .mark i { background: var(--ink); }
+  .hero { isolation: isolate; padding-bottom: 100px; background: radial-gradient(ellipse at 50% 95%, #CCD5E2, transparent 65%), linear-gradient(145deg, #EDF0F4, #E1E5ED 55%, #E9EAF0); }
+  .hero::before, .hero::after { content: ''; position: absolute; z-index: -1; width: 140%; height: 42%; left: -20%; top: 29%; border-radius: 50%; pointer-events: none; opacity: .45; transform: rotate(-18deg); background: transparent; box-shadow: 0 -1px 5px var(--glow-gold), 0 -5px 12px var(--glow-gold), 0 9px 4px var(--glow-lilac), 0 14px 16px var(--glow-blue), 0 45px 4px var(--glow-blue), 0 49px 14px var(--glow-lilac); filter: blur(3px); animation: trail-drift 32s ease-in-out infinite alternate; }
+  .hero::after { top: 12%; left: -12%; opacity: .30; transform: rotate(23deg); animation-duration: 43s; animation-direction: alternate-reverse; }
+  @keyframes trail-drift { to { translate: 3% 24px; rotate: 4deg; } }
+  .ghost-word { bottom: -.10em; font-size: clamp(10rem, 33vw, 29rem); filter: blur(20px); opacity: .95; text-shadow: 0 0 35px white, 0 0 85px white; z-index: -1; }
+  .btn { position: relative; isolation: isolate; overflow: hidden; backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -2px 5px rgba(18,26,35,.08), -1px 0 0 var(--prism-red), 1px 0 0 var(--prism-blue), 0 8px 24px rgba(18,26,35,.08); }
+  .btn.solid { background: linear-gradient(160deg, rgba(44,56,72,.94), rgba(18,26,35,.97)); border-color: rgba(255,255,255,.4); }
+  .btn.glass { backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5); box-shadow: inset 0 1px 0 white, inset 0 -2px 8px rgba(18,26,35,.05), -1px 0 0 var(--prism-red), 1px 0 0 var(--prism-blue), 0 8px 24px rgba(18,26,35,.08); }
+  .btn::after { content: ''; pointer-events: none; position: absolute; inset: -60% auto -60% -80%; width: 40%; transform: skewX(-22deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); }
+  @media (hover: hover) { .btn:hover::after { animation: sheen .8s ease both; } }
+  @keyframes sheen { to { left: 150%; } }
+  .proofline { background: linear-gradient(130deg, rgba(255,255,255,.70), rgba(255,255,255,.38)); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); box-shadow: inset 0 1px 0 white, inset 0 -2px 12px rgba(52,68,90,.05), -1px 0 0 var(--prism-red), 1px 0 0 var(--prism-blue), 0 24px 60px rgba(43,57,83,.13); }
+  .pipeline { margin-top: 40px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: linear-gradient(125deg, rgba(255,255,255,.6), rgba(255,255,255,.25)); box-shadow: inset 0 1px 0 white; }
+  .sequence { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); }
+  .sequence > div { padding: 24px 20px; border-right: 1px solid var(--line); border-top: 1px solid rgba(255,255,255,.9); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); box-shadow: inset 0 -4px 12px rgba(18,26,35,.025); }
+  .sequence > div:last-child { border-right: 0; }
+  .sequence span { display: block; font: .75rem var(--mono); color: var(--muted); margin-bottom: 16px; }
+  .sequence strong { font-size: .95rem; font-weight: 500; }
+  .pipeline-body { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+  .pipeline-copy { padding: 32px; }
+  .pipeline-intro { font: 1.65rem/1.25 var(--serif); margin: 0 0 28px; max-width: 25ch; }
+  .pipeline-detail h3 { font-size: .90rem; margin: 18px 0 4px; }
+  .pipeline-detail p { color: var(--muted); font-size: .90rem; margin: 0; }
+  .terminal { min-width: 0; background: var(--panel); color: #DCE3EA; padding: 30px 26px; font: .76rem/1.8 var(--mono); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+  .terminal pre { font: inherit; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .terminal-title { color: white; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--panel-line); }
+  .log-line { display: grid; grid-template-columns: minmax(0,1fr) auto; column-gap: 8px; margin: 16px 0; }
+  .log-line .log-label { overflow: hidden; white-space: nowrap; }
+  .log-line .log-label::after { content: ' ................................'; color: #8190A1; }
+  .log-track { grid-column: 1 / -1; height: 8px; margin-top: 7px; background: rgba(255,255,255,.06); }
+  .log-fill { height: 100%; background: #7E8C9D; }
+  .log-fill.verified { background: var(--highlight); }
+  .charts { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart { min-width: 0; margin: 0; padding: 28px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.45); box-shadow: inset 0 1px 0 white; }
+  .chart-a { grid-column: 1 / -1; }
+  .chart h3 { font-size: 1.12rem; letter-spacing: -.025em; line-height: 1.35; margin: 0 0 8px; }
+  .chart-meta, .chart figcaption { color: var(--muted); font-size: .80rem; }
+  .chart-meta { margin: 0 0 28px; }
+  .chart figcaption { margin-top: 22px; }
+  .timing-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr) 72px; align-items: center; gap: 20px; margin-top: 24px; }
+  .timing-label { font-size: .90rem; line-height: 1.4; }
+  .timing-value { font: .85rem var(--mono); text-align: right; white-space: nowrap; }
+  .timing-track { height: 34px; border-left: 1px solid var(--line); background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), rgba(18,26,35,.07) calc(25% - 1px), rgba(18,26,35,.07) 25%); }
+  .timing-fill { height: 100%; min-width: 3px; background: repeating-linear-gradient(125deg, transparent 0 3px, rgba(255,255,255,.35) 3px 4px), var(--ink); border-radius: 0 3px 3px 0; }
+  .chart-b .timing-row { grid-template-columns: 85px minmax(0,1fr) 55px; gap: 12px; }
+  .chart-b .timing-track { height: 25px; }
+  .stacked-track { display: flex; height: 48px; overflow: hidden; border-radius: 5px; margin-top: 34px; }
+  .stacked-track span { display: block; }
+  .stack-verified { background: var(--verified); }
+  .stack-review { background: repeating-linear-gradient(125deg, transparent 0 4px, rgba(255,255,255,.22) 4px 5px), var(--review); }
+  .stack-flagged { background: var(--flagged); }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: .78rem; margin-top: 18px; }
+  .chart-legend span { display: inline-flex; gap: 7px; align-items: center; }
+  .stroke { border: 1px solid rgba(255,255,255,.65); backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6); background: radial-gradient(ellipse at 45% 0%, #FFFFE2, transparent 55%), linear-gradient(175deg, #FFF6A8, var(--highlight) 45%, #C6A319); box-shadow: 0 2px 3px rgba(255,255,255,.3), 0 22px 35px rgba(255,225,77,.25), inset 0 3px 4px rgba(255,255,255,.9), inset 0 -8px 15px rgba(120,90,0,.35); }
+  .stroke::before { content: ''; position: absolute; inset: 90% 12% -55%; background: radial-gradient(ellipse, rgba(255,246,168,.6), rgba(255,225,77,.15) 45%, transparent 70%); filter: blur(10px); transform: scaleX(1.2); }
+  .stroke::after { width: 78%; height: 12%; top: 10%; filter: blur(2px); }
+  @media (max-width: 860px) { .pipeline-body, .charts { grid-template-columns: 1fr; } .sequence > div { padding: 18px 12px; } .sequence strong { font-size: .83rem; } .chart-a { grid-column: auto; } }
+  @media (max-width: 540px) {
+    .wrap { padding-inline: 20px; }
+    .hero { padding-top: 72px; padding-bottom: 80px; }
+    section { padding: 64px 0; }
+    .proofline { padding: 20px; margin-top: 40px; }
+    .proofline p { font-size: 1.15rem; overflow-wrap: anywhere; }
+    .proofline .tag { align-items: flex-start; font-size: .76rem; }
+    .proofline .tag .dot { margin-top: 5px; }
+    .frame > *, .stack > * { min-width: 0; }
+    .instrument { padding: 16px 10px; font-size: .63rem; overflow-wrap: anywhere; }
+    .instrument td { padding: 9px 3px; }
+    .instrument .why { font-size: .60rem; }
+    .instrument .head { font-size: .65rem; }
+    .page { padding: 24px 18px; }
+    .page .cells { font-size: .76rem; gap: 6px; }
+    .page .cells .h { font-size: .62rem; }
+    .stack ul { font-size: clamp(2.3rem, 10vw, 3rem); }
+    .sequence { grid-template-columns: 1fr; }
+    .sequence > div { display: flex; align-items: baseline; gap: 18px; padding: 14px 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .sequence > div:last-child { border-bottom: 0; }
+    .sequence span { margin: 0; }
+    .sequence strong { font-size: .95rem; }
+    .pipeline-copy { padding: 24px; }
+    .terminal { padding: 24px 16px; font-size: .65rem; }
+    .chart { padding: 24px 18px; }
+    .timing-row { grid-template-columns: minmax(0, 1fr) 65px; gap: 8px 12px; margin-top: 24px; }
+    .timing-label { grid-column: 1; }
+    .timing-value { grid-column: 2; grid-row: 1; }
+    .timing-track { grid-row: 2; grid-column: 1 / -1; height: 26px; }
+    .chart-b .timing-row { grid-template-columns: 76px minmax(0,1fr) 53px; }
+    .chart-b .timing-track { grid-column: 2; grid-row: 1; }
+    .chart-b .timing-value { grid-column: 3; }
+    .close { padding: 100px 20px; }
+    .close h2, .stroke { font-size: clamp(1.8rem, 7.5vw, 2.6rem); }
+    .engines { gap: 18px 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hero::before, .hero::after, .btn::after { animation: none !important; } }
+
 </style>
 </head>
 <body>
@@ -234,10 +338,29 @@
   <div class="wrap">
     <h2>The AI reads. The code checks.</h2>
     <p class="sub">Language models are fast readers that sometimes invent things. Datum never lets one grade its own work.</p>
-    <div class="steps">
-      <div><span class="n">1</span><h3>Read</h3><p>Datum keeps only the parts of each page that mention your properties, so long papers stay quick.</p></div>
-      <div><span class="n">2</span><h3>Extract</h3><p>Claude, Cerebras, Groq or Gemini, whichever answers first, returns every value with its exact quote and page.</p></div>
-      <div><span class="n">3</span><h3>Check</h3><p>Plain code confirms the quote is on the page, the value is in the quote, the unit fits, and the right material owns the row.</p></div>
+    <div class="pipeline">
+      <div class="sequence" aria-label="Extraction pipeline">
+        <div><span>01</span><strong>Read the PDF</strong></div>
+        <div><span>02</span><strong>Keep relevant pages</strong></div>
+        <div><span>03</span><strong>Extract with AI</strong></div>
+        <div><span>04</span><strong>Check in code</strong></div>
+        <div><span>05</span><strong>One table</strong></div>
+      </div>
+      <div class="pipeline-body">
+        <div class="pipeline-copy">
+          <p class="pipeline-intro">From PDF to one table, with AI extraction and code checks against the page.</p>
+          <div class="pipeline-detail"><h3>Read</h3><p>Datum keeps only the parts of each page that mention your properties, so long papers stay quick.</p></div><div class="pipeline-detail"><h3>Extract</h3><p>Claude, Cerebras, Groq or Gemini, whichever answers first, returns every value with its exact quote and page.</p></div><div class="pipeline-detail"><h3>Check</h3><p>Plain code confirms the quote is on the page, the value is in the quote, the unit fits, and the right material owns the row.</p></div>
+        </div>
+        <div class="terminal" aria-label="Run log: 3 papers, 22 pages; 7 pages sent to AI; Claude 2, Cerebras 3, Groq 1; 37 measurements; 23 verified, 14 needs review, 0 flagged">
+          <div class="terminal-title">datum&nbsp; 3 papers · 22 pages</div>
+          <pre>pages sent to AI ........ 7 of 22
+engines ................. Claude 2 · Cerebras 3 · Groq 1
+measurements ............ 37</pre>
+          <div class="log-line"><span class="log-label">✓ verified</span><span>23</span><div class="log-track"><div class="log-fill verified" style="width:62.162162%"></div></div></div>
+          <div class="log-line"><span class="log-label">● needs review</span><span>14</span><div class="log-track"><div class="log-fill" style="width:37.837838%"></div></div></div>
+          <div class="log-line"><span class="log-label">✕ flagged</span><span>0</span><div class="log-track"><div class="log-fill" style="width:0%"></div></div></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -249,6 +372,31 @@
       <div><div class="big">10/10</div><p>hand-checked values recovered from Inal et al. 2017, the paper we developed on. Held-out testing is next.</p></div>
       <div><div class="big">&lt;20 s</div><p>per paper in our fresh runs, against roughly an hour of copying by hand.</p></div>
       <div><div class="big">30</div><p>automated tests, including deliberately wrong rows that must be flagged.</p></div>
+    </div>
+    <div class="charts">
+      <figure class="chart chart-a">
+        <h3>Seconds to process one paper, as we built it</h3>
+        <p class="chart-meta">Inal et al. 2017, fresh runs, Oct 25</p>
+        <div class="timing-row"><span class="timing-label">Gemini only</span><div class="timing-track"><div class="timing-fill" style="width:100%"></div></div><span class="timing-value">136.9 s</span></div>
+        <div class="timing-row"><span class="timing-label">→ + Cerebras &amp; Groq racing</span><div class="timing-track"><div class="timing-fill" style="width:45.653762%"></div></div><span class="timing-value">62.5 s</span></div>
+        <div class="timing-row"><span class="timing-label">→ + Claude, page excerpts, load spreading</span><div class="timing-track"><div class="timing-fill" style="width:5.259313%"></div></div><span class="timing-value">7.2 s</span></div>
+        <figcaption>Same paper, three versions of our engine router.</figcaption>
+      </figure>
+      <figure class="chart chart-b">
+        <h3>Average answer time per engine</h3>
+        <div class="timing-row"><span class="timing-label">Cerebras</span><div class="timing-track"><div class="timing-fill" style="width:18.918919%"></div></div><span class="timing-value">0.7 s</span></div>
+        <div class="timing-row"><span class="timing-label">Groq</span><div class="timing-track"><div class="timing-fill" style="width:29.729730%"></div></div><span class="timing-value">1.1 s</span></div>
+        <div class="timing-row"><span class="timing-label">Claude</span><div class="timing-track"><div class="timing-fill" style="width:100%"></div></div><span class="timing-value">3.7 s</span></div>
+        <figcaption>From our run logs.</figcaption>
+      </figure>
+      <figure class="chart chart-c">
+        <h3>What happened to 37 extracted values</h3>
+        <div class="stacked-track" role="img" aria-label="23 verified, 14 needs review, 0 flagged">
+          <span class="stack-verified" style="width:62.162162%"></span><span class="stack-review" style="width:37.837838%"></span><span class="stack-flagged" style="width:0%"></span>
+        </div>
+        <div class="chart-legend"><span><i class="dot v"></i>23 verified</span><span><i class="dot r"></i>14 needs review</span><span><i class="dot f"></i>0 flagged</span></div>
+        <figcaption>3 papers.</figcaption>
+      </figure>
     </div>
     <div class="engines">
       <span>Claude</span><span>Cerebras</span><span>Groq</span><span>Gemini</span>
@@ -272,6 +420,10 @@
 
   // the one orchestrated moment: the paper comes into focus around the verified number
   window.addEventListener("load", function () {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      document.querySelectorAll(".proofline .fog").forEach(function (el) { el.style.filter = "none"; });
+      return;
+    }
     setTimeout(function () {
       document.querySelectorAll(".proofline .fog").forEach(function (el) { el.style.filter = "blur(0)"; el.style.color = "#2a333d"; });
     }, 900);
