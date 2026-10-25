@@ -579,3 +579,32 @@ def test_spaces_keep_visitors_apart(tmp_path, monkeypatch):
     assert threads.list_threads("") == []                # the shared local list doesn't show space folders
     assert threads.clean_space("../../etc") == ""        # junk in the url can't escape the folder
     assert threads.load("../" + alice, "") is None
+
+
+# ---------------- suggested properties ----------------
+def test_suggestions_keep_only_names_in_the_paper(paper):
+    import suggest
+    def fake_suggest(prompt):
+        assert "Supplementary Table 2" in prompt          # the skim includes the tables
+        return json.dumps({"rows": [
+            {"property": "electrical conductivity", "unit": "S/cm"},
+            {"property": "Volumetric capacitance", "unit": "F cm-3"},
+            {"property": "hole mobility", "unit": "cm2/Vs"},      # not in the paper -> dropped
+            {"property": "", "unit": ""},
+        ]})
+    found = suggest.suggest({"a.pdf": paper["bytes"], "b.pdf": paper["bytes"]}, [provider("Fake", fake_suggest)])
+    names = [item["name"] for item in found["items"]]
+    assert names == ["electrical conductivity", "Volumetric capacitance"]
+    assert found["items"][0]["papers"] == ["a.pdf", "b.pdf"]     # merged across papers
+    assert found["failures"] == []
+
+
+def test_suggestion_chips_edit_the_properties_box():
+    import suggest
+    names = ["μC*", "electrical conductivity"]
+    text = suggest.apply_selection("mobility", names, ["μC*"])
+    assert text == "mobility, μC*"                              # typed text stays, chip added
+    assert suggest.selected_in(text, names) == ["μC*"]
+    text = suggest.apply_selection(text, names, ["electrical conductivity"])
+    assert text == "mobility, electrical conductivity"         # turned-off chip removed
+    assert suggest.apply_selection("", names, []) == ""

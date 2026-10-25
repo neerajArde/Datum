@@ -52,6 +52,10 @@ header[data-testid="stHeader"] { background: transparent !important; }
 .stApp .dt-side-link { margin: .5rem .4rem 0; font-size: .8rem; }
 .stApp .dt-side-link a { color: var(--muted, #5A636E) !important; text-decoration: none !important; }
 .stApp .dt-side-link a:hover { color: var(--ink) !important; }
+.stApp [class*="st-key-pick_"] button { background: var(--surface) !important; border: 1px solid var(--line) !important; color: #3A424C !important; }
+.stApp [class*="st-key-pick_"] button:hover { border-color: #C3C9D0 !important; }
+.stApp [class*="st-key-pick_"] button[aria-pressed="true"], .stApp [class*="st-key-pick_"] button[aria-checked="true"] { background: var(--ink) !important; border-color: var(--ink) !important; color: #fff !important; }
+.stApp [class*="st-key-pick_"] button[aria-pressed="true"] p, .stApp [class*="st-key-pick_"] button[aria-checked="true"] p { color: #fff !important; }
 .stApp .dt-side-label { font-size: .74rem; color: var(--faint); margin: 1.1rem 0 .3rem .4rem; }
 [data-testid="stSidebar"] .stButton button { justify-content: flex-start !important; text-align: left; font-weight: 500; font-size: .9rem;
   border-radius: 8px !important; padding: .38rem .6rem !important; min-height: 0 !important; box-shadow: none !important; }

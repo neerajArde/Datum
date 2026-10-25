@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 import pipeline
+import suggest
 import threads
 import ui
 from evaluate import evaluate, read_answer_key
@@ -336,6 +337,66 @@ def run_extraction(thread, settings):
     st.rerun()
 
 
+def pick_suggestions(thread_id, pills_key, names):
+    # a chip was toggled: rewrite the properties box to match
+    thread = threads.load(thread_id, st.session_state.get("space", ""))
+    if thread is None:
+        return
+    props_key = "props_" + thread_id
+    before = st.session_state.get(props_key, thread.get("properties", ""))
+    after = suggest.apply_selection(before, names, st.session_state.get(pills_key) or [])
+    st.session_state[props_key] = after
+    thread["properties"] = after
+    threads.save(thread)
+
+
+def suggestion_label(item, paper_count):
+    label = item["name"]
+    if item.get("unit"):
+        label = label + "  ·  " + item["unit"]
+    if paper_count > 1 and len(item["papers"]) > 1:
+        label = label + "  ·  " + str(len(item["papers"])) + " papers"
+    return label
+
+
+def show_suggestions(thread, providers, use_cache):
+    # "what do these papers report?" - chips the researcher can click into the properties box
+    if len(thread["papers"]) == 0:
+        return
+    paper_names = [paper["name"] for paper in thread["papers"]]
+    saved = thread.get("suggestions")
+    stale = saved is None or sorted(saved.get("papers", [])) != sorted(paper_names)
+
+    if saved and len(saved.get("items", [])) > 0:
+        items = {}
+        for item in saved["items"]:
+            items[item["name"]] = item
+        names = list(items.keys())
+        props_text = st.session_state.get("props_" + thread["id"], thread.get("properties", ""))
+        pills_key = "pick_" + thread["id"] + "_" + str(zlib.crc32(props_text.encode("utf-8")))
+        st.pills("Reported in your papers", names, selection_mode="multi",
+                 default=suggest.selected_in(props_text, names),
+                 format_func=lambda name: suggestion_label(items[name], len(paper_names)),
+                 key=pills_key, on_change=pick_suggestions, args=(thread["id"], pills_key, names))
+    elif saved and not stale and len(saved.get("failures", [])) == 0:
+        st.caption("No measured properties found in the abstract or tables. Type your own above.")
+
+    if saved and len(saved.get("failures", [])) > 0:
+        st.caption("Couldn't read every paper for suggestions: " + saved["failures"][0])
+
+    if stale and len(providers) > 0:
+        # runs on its own as soon as the papers change - one cached call per paper
+        with st.spinner("Reading your papers for the properties they report…"):
+            thread["suggestions"] = suggest.suggest(threads.paper_bytes(thread), providers, use_cache)
+        threads.save(thread)
+        st.rerun()
+    if saved and not stale and len(saved.get("failures", [])) > 0:
+        if st.button("Try suggestions again", key="suggest_again_" + thread["id"], icon=":material/refresh:", type="tertiary"):
+            thread["suggestions"] = None
+            threads.save(thread)
+            st.rerun()
+
+
 # ---------------------------------------------------------
 # which thread is open
 # ---------------------------------------------------------
@@ -426,11 +487,19 @@ settings["use_cache"] = use_cache
 st.markdown(ui.thread_header(current["title"], len(current["papers"])), unsafe_allow_html=True)
 
 with st.container(key="composer"):
-    properties = st.text_input("Properties", value=current.get("properties", ""), key="props_" + current["id"],
-                               placeholder="e.g. μC*, volumetric capacitance C*, electrical conductivity")
+    props_key = "props_" + current["id"]
+    if props_key not in st.session_state or st.session_state.pop("sync_props_" + current["id"], False):
+        st.session_state[props_key] = current.get("properties", "")
+    has_suggestions = bool((current.get("suggestions") or {}).get("items"))
+    properties = st.text_input("Properties", key=props_key,
+                               placeholder=("Leave empty to extract everything reported below, or pick some"
+                                            if has_suggestions else
+                                            "e.g. μC*, volumetric capacitance C* — or leave empty to extract everything"))
     if properties != current.get("properties", ""):
         current["properties"] = properties
         threads.save(current)
+
+    show_suggestions(current, providers, use_cache)
 
     st.markdown('<div class="dt-files-label">Papers</div>', unsafe_allow_html=True)
     for index in range(len(current["papers"])):
@@ -456,10 +525,33 @@ with st.container(key="composer"):
         st.session_state["upload_round_" + current["id"]] = upload_round + 1
         st.rerun()
 
-    ready = len(current["papers"]) > 0 and properties.strip() != "" and len(providers) > 0
-    spacer, button_column = st.columns([5, 1])
+    ready = len(current["papers"]) > 0 and len(providers) > 0
+    spacer, button_column = st.columns([4, 1])
     with button_column:
-        extract = st.button("Extract", type="primary", disabled=not ready, key="extract_" + current["id"], width="stretch")
+        label = "Extract" if properties.strip() != "" else "Extract all"
+        extract = st.button(label, type="primary", disabled=not ready, key="extract_" + current["id"], width="stretch")
+
+    if extract and properties.strip() == "":
+        # nothing typed: extract every property the papers were found to report
+        found = current.get("suggestions") or {}
+        if sorted(found.get("papers", [])) != sorted(p["name"] for p in current["papers"]):
+            with st.spinner("Reading your papers for the properties they report…"):
+                found = suggest.suggest(threads.paper_bytes(current), providers, use_cache)
+            current["suggestions"] = found
+        names = [item["name"] for item in found.get("items", [])]
+        extract = False
+        if len(names) == 0:
+            st.caption("Datum couldn't find reported properties in the abstract or tables. Type the ones you want above.")
+        else:
+            current["properties"] = ", ".join(names)
+            st.session_state["sync_props_" + current["id"]] = True    # show what we used in the box
+            st.session_state["autorun_" + current["id"]] = True
+        threads.save(current)
+        if len(names) > 0:
+            st.rerun()
+
+    if st.session_state.pop("autorun_" + current["id"], False):
+        extract = True
 
 error = st.session_state.get("run_error_" + current["id"])
 
