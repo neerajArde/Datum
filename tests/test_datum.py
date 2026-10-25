@@ -412,3 +412,113 @@ def test_excerpt_keeps_the_table_and_drops_unrelated_text():
     assert "4100 ± 98" in short
     assert "Electrical conductivity" in short
     assert len(short) < len(page) / 4
+
+
+def test_unreadable_single_page_goes_to_another_engine(paper):
+    # one engine garbles a page it cant split further -> a different engine gets that page
+    def garbles(prompt):
+        return "{\"rows\": [{\"material\": \"Crys"
+
+    result = pipeline.run([paper], PROPERTIES, [provider("Garbles", garbles), provider("Good", fake_answer)])
+    assert len(result["rows"]) == 6
+    assert result["failures"] == []
+    assert result["stats"]["calls_by_provider"]["Good"] >= 1
+
+
+def test_value_with_plus_minus_is_split_and_reference_marks_cited():
+    from verify import verify_row
+    pages = [{"page": 4, "text": "PEDOT:PSS + EG19\n39 ± 3\n1.9 ± 1.3\n47 ± 6\n"}]
+    raw = row("PEDOT:PSS + EG", "μC*", "47 ± 6", "", "F cm-1 V-1 s-1", 4, "PEDOT:PSS + EG19 39 ± 3 1.9 ± 1.3 47 ± 6")
+    raw["reference"] = "19"
+    result = verify_row(raw, pages, "inal.pdf", PROPERTIES)
+    assert result["value"] == "47" and result["error"] == "6"
+    assert result["status"] == "verified"
+    assert result["origin"] == "cited" and result["reference"] == "19"
+    assert "reference [19]" in result["checks"]
+
+
+def test_real_inal_rows_now_match_the_answer_key():
+    # rows exactly as the ai returned them in the real run on the Inal paper
+    from verify import verify_row
+    real = [
+        ("PEDOT:TOS [VPP]33", "C*", "136 ± 50"), ("PEDOT:TOS [VPP]33", "μC*", "72 ± 14"),
+        ("PEDOT:PSS + EG19", "C*", "39 ± 3"), ("PEDOT:PSS + EG19", "μC*", "47 ± 6"),
+        ("PEDOT:PSTFSILi10024", "C*", "26 ± 10"), ("PEDOT:PSTFSILi10024", "μC*", "20 ± 1.6"),
+        ("PEDOT:DS + EG34", "C*", "65 ± 46"), ("PEDOT:DS + EG34", "μC*", "2.2 ± 0.9"),
+        ("PEDOT:PMATFSILi8024", "C*", "27 ± 7"), ("PEDOT:PMATFSILi8024", "μC*", "0.15 ± 0.01"),
+    ]
+    page_text = ""
+    rows = []
+    for material, prop, value in real:
+        evidence = material + " " + value
+        page_text = page_text + evidence + "\n"
+    pages = [{"page": 4, "text": page_text}]
+    for material, prop, value in real:
+        raw = row(material, prop, value, "", "F cm-3" if prop == "C*" else "F cm-1 V-1 s-1", 4, material + " " + value)
+        rows.append(verify_row(raw, pages, "inal.pdf", PROPERTIES))
+    key = pd.read_csv(os.path.join(os.path.dirname(HERE), "answer_key_inal.csv"))
+    report = evaluate(rows, read_answer_key(key))
+    assert report["found"] == 10
+    assert all(r["status"] == "verified" for r in rows)
+
+
+# ---------------- tables (built like the real Inal 2017 Table 1) ----------------
+INAL_PAGE = (
+    "Table 1 Summary of material properties\n"
+    "Material\nC* (F cm−3)\nµOECT (cm2 V−1 s−1)\nµC* (F cm−1 V−1 s−1)\n[µC*]OECT (F cm−1 V−1 s−1)\n"
+    "PEDOT:PSS + EG19\n39 ± 3\n1.9 ± 1.3\n75 ± 51\n47 ± 6\n"
+    "PEDOT:TOS [VPP]33\n136 ± 50\n0.93 ± 0.72\n126 ± 108\n72 ± 14\n"
+    "p(g2T‑TT)32\n241 ± 94\n0.94 ± 0.25\n227 ± 107\n261 ± 29\n"
+    "p(g2T‑T)22\n220 ± 30\n0.28 ± 0.1\n62 ± 24\n167 ± 65\n"
+)
+
+
+def inal_row(material, prop, value, error, evidence, unit="F cm−1 V−1 s−1"):
+    item = row(material, prop, value, error, unit, 4, evidence)
+    item["reference"] = ""
+    return item
+
+
+INAL_MATERIALS = ["PEDOT:PSS + EG", "PEDOT:TOS", "p(g2T-TT)", "p(g2T-T)"]
+
+
+def test_table_values_with_cells_in_between_are_verified():
+    from verify import verify_row
+    pages = [{"page": 4, "text": INAL_PAGE}]
+    # evidence exactly the way the ai wrote it in the real run: it skips the cells in between
+    cases = [
+        inal_row("PEDOT:PSS + EG", "[µC*]OECT", "47", "6", "PEDOT:PSS + EG 47 ± 6"),
+        inal_row("PEDOT:PSS + EG", "µC*", "75", "51", "PEDOT:PSS + EG 75 ± 51"),
+        inal_row("PEDOT:TOS", "[µC*]OECT", "72", "14", "PEDOT:TOS 72 ± 14"),
+        inal_row("p(g2T-TT)", "[µC*]OECT", "261", "29", "p(g2T-TT) 261 ± 29"),
+        inal_row("p(g2T-T)", "µC*", "62", "24", "p(g2T-T) 62 ± 24"),
+    ]
+    for raw in cases:
+        result = verify_row(raw, pages, "inal.pdf", PROPERTIES, INAL_MATERIALS)
+        assert result["status"] == "verified", (raw["material"], raw["value"], result["checks"])
+        assert "matched as a table row" in result["checks"]
+
+
+def test_table_value_credited_to_the_wrong_material_is_flagged():
+    from verify import verify_row
+    pages = [{"page": 4, "text": INAL_PAGE}]
+    # 261 ± 29 belongs to p(g2T-TT), not p(g2T-T) - similar names, different polymers
+    wrong = inal_row("p(g2T-T)", "[µC*]OECT", "261", "29", "p(g2T-T) 261 ± 29")
+    result = verify_row(wrong, pages, "inal.pdf", PROPERTIES, INAL_MATERIALS)
+    assert result["status"] == "flagged"
+    # 72 ± 14 is PEDOT:TOS, the row above is PEDOT:PSS + EG
+    wrong = inal_row("PEDOT:PSS + EG", "[µC*]OECT", "72", "14", "PEDOT:PSS + EG 72 ± 14")
+    result = verify_row(wrong, pages, "inal.pdf", PROPERTIES, INAL_MATERIALS)
+    assert result["status"] == "flagged"
+    # a value that is nowhere in the table
+    wrong = inal_row("PEDOT:TOS", "[µC*]OECT", "80", "14", "PEDOT:TOS 80 ± 14")
+    result = verify_row(wrong, pages, "inal.pdf", PROPERTIES, INAL_MATERIALS)
+    assert result["status"] == "flagged"
+
+
+def test_scorer_does_not_confuse_similar_polymer_names():
+    from evaluate import same_material
+    assert same_material("PEDOT:TOS", "PEDOT:TOS [VPP]")
+    assert same_material("PEDOT:PSS + EG19", "PEDOT:PSS + EG")
+    assert not same_material("p(g2T-TT)", "p(g2T-T)")
+    assert not same_material("PEDOT:PSS", "PEDOT:PSS + EG")

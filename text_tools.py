@@ -64,3 +64,25 @@ def same_number(a, b):
     difference = abs(a - b)
     allowed = 1e-9 * max(1.0, abs(a), abs(b))
     return difference <= allowed
+
+
+def squash(name):
+    # material names compared without spaces or case: "PEDOT:PSS + EG" -> "pedot:pss+eg"
+    return normalize(name).replace(" ", "")
+
+
+def same_material_name(a, b):
+    # material names must match EXACTLY - "p(g2T-TT)" and "p(g2T-T)" are different polymers.
+    # the one allowed difference: a citation number glued on the end by the pdf,
+    # e.g. "PEDOT:PSS + EG19" is "PEDOT:PSS + EG" from reference 19
+    a = squash(a)
+    b = squash(b)
+    if a == "" or b == "":
+        return False
+    if a == b:
+        return True
+    if re.fullmatch(re.escape(a) + r"\d{1,3}", b):
+        return True
+    if re.fullmatch(re.escape(b) + r"\d{1,3}", a):
+        return True
+    return False

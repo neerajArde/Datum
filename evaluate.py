@@ -6,21 +6,29 @@
 #   recall    = of the true values in the papers, how many datum found
 #   caught    = of datum's WRONG rows, how many verification already marked review/flagged
 
+import re
+
 from rapidfuzz import fuzz
 
 from schema import STATUS_VERIFIED
-from text_tools import normalize, to_number
+from text_tools import normalize, same_material_name, squash, to_number
 
 # values count as equal if they are within 0.5% of each other
 VALUE_TOLERANCE = 0.005
 
 
+def without_qualifiers(name):
+    # "pedot:tos[vpp]" -> "pedot:tos". brackets hold process notes, not a different material
+    # only square brackets: round brackets are part of polymer names like p(g2T-TT)
+    return re.sub(r"\[[^\]]*\]", "", name)
+
+
 def same_material(a, b):
-    a = normalize(a).replace(" ", "")
-    b = normalize(b).replace(" ", "")
-    if a == b:
+    # strict: exact name (a glued citation number allowed). a "[VPP]"-style qualifier
+    # may be missing on one side. no fuzzy matching - similar names are different polymers
+    if same_material_name(a, b):
         return True
-    return fuzz.ratio(a, b) >= 90
+    return same_material_name(without_qualifiers(squash(a)), without_qualifiers(squash(b)))
 
 
 def same_property(a, b):

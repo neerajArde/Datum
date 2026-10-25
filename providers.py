@@ -73,6 +73,7 @@ class PermanentError(Exception):
 
 
 class BadOutputError(Exception):
+    # .provider is filled in by the router, so the pipeline can ask a DIFFERENT engine next time
     # provider answered, but not with valid json (often: answer got cut off)
     pass
 
@@ -349,7 +350,7 @@ def write_log(router, name, seconds, outcome):
         router["log"].append(entry)
 
 
-def ready_providers(router):
+def ready_providers(router, skip=None):
     # providers that are not switched off and not cooling down.
     # the least busy engine goes first (priority order breaks ties), so 4 parallel
     # chunks spread over cerebras + groq + ... instead of all hitting cerebras
@@ -362,6 +363,8 @@ def ready_providers(router):
             name = provider["name"]
             position = position + 1
             if name in router["disabled"]:
+                continue
+            if skip is not None and name in skip:
                 continue
             if router["cooldown_until"].get(name, 0) > now:
                 continue
@@ -406,11 +409,11 @@ def timed_call(router, provider, prompt):
     return result, seconds
 
 
-def race(router, prompt):
+def race(router, prompt, skip=None):
     # one round: ask the first ready provider; if it is slow, also ask the next one.
     # returns (rows, name) for the first good answer, or None if everyone failed.
     # raises BadOutputError the moment any engine gives an unreadable answer.
-    queue = ready_providers(router)
+    queue = ready_providers(router, skip)
     if len(queue) == 0:
         return None, []
 
@@ -464,6 +467,7 @@ def race(router, prompt):
                     # dont sit waiting for slower engines: hand it straight back so the
                     # pipeline splits the chunk and races the smaller pieces
                     write_log(router, name, seconds, "unreadable answer")
+                    error.provider = name
                     raise error
 
                 write_log(router, name, seconds, "answered")
@@ -478,12 +482,13 @@ def race(router, prompt):
     return None, errors
 
 
-def ask(router, prompt):
+def ask(router, prompt, skip=None):
+    # skip: engines NOT to use for this prompt (e.g. one that already gave an unreadable answer)
     # returns (rows, provider name). raises BadOutputError or AllProvidersFailed
     errors = []
 
     for round_number in range(ROUNDS):
-        answer, round_errors = race(router, prompt)
+        answer, round_errors = race(router, prompt, skip)
         errors = errors + round_errors
         if answer is not None:
             return answer

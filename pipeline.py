@@ -27,20 +27,27 @@ def failure(chunk, reason):
     return info
 
 
-def extract_chunk(router, chunk, target_properties):
+def extract_chunk(router, chunk, target_properties, skip=None):
     # one llm job. returns (raw rows, failures)
+    # skip: engines that already gave an unreadable answer for this exact text
     prompt = build_prompt(chunk["text"], target_properties)
     try:
-        rows, provider_name = ask(router, prompt)
+        rows, provider_name = ask(router, prompt, skip)
     except BadOutputError as error:
-        # the answer was probably cut off because the chunk had too much in it.
-        # split it in half and try each half on its own
+        # an unreadable answer has two possible causes:
+        #   1. the chunk had too much in it and the answer got cut off -> split it
+        #   2. that engine just struggles with this text -> give it to a DIFFERENT engine
         if len(chunk["blocks"]) > 1:
             left, right = split_chunk(chunk)
             left_rows, left_failures = extract_chunk(router, left, target_properties)
             right_rows, right_failures = extract_chunk(router, right, target_properties)
             return left_rows + right_rows, left_failures + right_failures
-        return [], [failure(chunk, "unreadable answer: " + str(error))]
+
+        tried = set(skip or [])
+        tried.add(getattr(error, "provider", ""))
+        if len(tried) < len(router["providers"]):
+            return extract_chunk(router, chunk, target_properties, tried)
+        return [], [failure(chunk, "unreadable answer from every engine: " + str(error))]
     except AllProvidersFailed as error:
         return [], [failure(chunk, "all providers failed: " + str(error))]
 
@@ -62,8 +69,9 @@ def remove_duplicates(rows):
             normalize(row["material"]),
             normalize(row["property"]),
             normalize(row["value"]),
+            normalize(row["error"]),
             normalize(row["unit"]),
-            normalize(row["evidence"]),
+            str(row["page"]),
         )
         if signature in seen:
             continue
@@ -150,8 +158,11 @@ def run(papers, target_properties, providers, workers=DEFAULT_WORKERS,
     # ---- stage 4: verify every row against its own paper ----
     table = []
     for info in infos:
+        materials = []
         for raw in info["raw_rows"]:
-            table.append(verify_row(raw, info["pages"], info["name"], target_properties))
+            materials.append(raw.get("material", ""))
+        for raw in info["raw_rows"]:
+            table.append(verify_row(raw, info["pages"], info["name"], target_properties, materials))
     table = remove_duplicates(table)
 
     # ---- stats for the ui (and for the "how fast is it" slide) ----

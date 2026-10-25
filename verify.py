@@ -13,10 +13,12 @@
 #   review    - probably fine, but a human should glance at it
 #   flagged   - failed a hard check, likely a hallucination
 
+import re
+
 from rapidfuzz import fuzz
 
 from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED, TABLE_COLUMNS
-from text_tools import normalize, numbers_in, same_number, to_number
+from text_tools import normalize, numbers_in, same_material_name, same_number, squash, to_number
 from units import expected_unit, standardize
 
 # how similar (0-100) a property name must be to one of the user's target properties
@@ -109,6 +111,102 @@ def match_target(prop, targets):
     return best_target, best_score
 
 
+# how far back from a value we look for its row's material name (in characters, spaces removed)
+TABLE_ROW_REACH = 200
+NUMBER_IN_TEXT = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def is_table_like(evidence, material):
+    # a table row is a name followed by numbers: "PEDOT:PSS + EG 39 ± 3 1.9 ± 1.3 47 ± 6".
+    # a sentence has real words: "Pr-P shows a conductivity of 1.7 S/cm in water".
+    # sentences must be found word for word; table rows get the table check below.
+    material_words = re.findall(r"[^\W\d_]{2,}", normalize(material))
+    extra = 0
+    for word in re.findall(r"[^\W\d_]{2,}", normalize(evidence)):
+        if word not in material_words:
+            extra = extra + 1
+    return extra <= 2
+
+
+def name_pattern(name):
+    # "PEDOT:PSS + EG" -> a pattern that also matches "PEDOT:PSS+EG" (spacing varies in pdfs)
+    squashed = squash(name)
+    if squashed == "":
+        return None
+    parts = []
+    for character in squashed:
+        parts.append(re.escape(character))
+    return re.compile(r"\s*".join(parts))
+
+
+def find_table_row(material, value, error, pages, claimed_page, known_materials):
+    # for tables, pdf text stores one cell per line, so the ai's "row" is never an exact quote.
+    # instead we check the facts directly on the page:
+    #   - the value (and its ± error) is printed on the page
+    #   - the CLOSEST material name before it is this row's material
+    #     (closest, so a value can't be credited to the material in the row above)
+    number = to_number(value)
+    if number is None or squash(material) == "":
+        return None
+    error_number = to_number(error)
+
+    names = []
+    seen = []
+    for name in list(known_materials) + [material]:
+        if squash(name) in seen or squash(name) == "":
+            continue
+        seen.append(squash(name))
+        names.append((name, name_pattern(name)))
+
+    order = []
+    for page_info in pages:
+        if page_info["page"] == claimed_page:
+            order.insert(0, page_info)
+        else:
+            order.append(page_info)
+
+    for page_info in order:
+        # cells stay separated by spaces, so "EG19" and "39" never merge into "1939"
+        text = normalize(page_info["text"])
+        text = re.sub(r"(?<=\d),(?=\d{3}\b)", "", text)
+        for match in NUMBER_IN_TEXT.finditer(text):
+            # a whole number only: dont match the "9" inside "19" or "1.9"
+            before = text[match.start() - 1:match.start()] if match.start() > 0 else ""
+            if before.isdigit() or before == ".":
+                continue
+            if not same_number(float(match.group()), number):
+                continue
+            if error_number is not None:
+                after = text[match.end():match.end() + 20].lstrip()
+                if not after.startswith("±"):
+                    continue
+                following = NUMBER_IN_TEXT.match(after[1:].lstrip())
+                if following is None or not same_number(float(following.group()), error_number):
+                    continue
+
+            # which material name sits closest before this value?
+            window_start = max(0, match.start() - TABLE_ROW_REACH)
+            window = text[window_start:match.start()]
+            closest_name = ""
+            closest_end = -1
+            closest_length = 0
+            # the name that ENDS closest to the value wins. this also picks "PEDOT:PSS + EG"
+            # over "PEDOT:PSS" in the same spot, because the longer name ends later
+            for name, pattern in names:
+                for found in pattern.finditer(window):
+                    closer = found.end() > closest_end
+                    same_spot_longer = found.end() == closest_end and len(found.group()) > closest_length
+                    if closer or same_spot_longer:
+                        closest_end = found.end()
+                        closest_length = len(found.group())
+                        closest_name = name
+            if closest_name == "":
+                continue
+            if same_material_name(closest_name, material):
+                return page_info["page"]
+    return None
+
+
 def number_is_in(number, text):
     for found in numbers_in(text):
         if same_number(found, number):
@@ -116,16 +214,31 @@ def number_is_in(number, text):
     return False
 
 
-def verify_row(raw, pages, paper_name, target_properties=""):
+def split_plus_minus(value, error):
+    # "241 ± 94" -> ("241", "94"). done in plain code so it works the same every time,
+    # whatever the ai did. only splits when the error field is empty
+    text = str(value)
+    if error != "":
+        return value, error
+    for sign in ["±", "+/-", "+-"]:
+        if sign in text:
+            parts = text.split(sign, 1)
+            return parts[0].strip(), parts[1].strip()
+    return value, error
+
+
+def verify_row(raw, pages, paper_name, target_properties="", known_materials=None):
     checks = []
     status = STATUS_VERIFIED
 
     material = raw.get("material", "")
-    value = raw.get("value", "")
-    error = raw.get("error", "")
+    value, error = split_plus_minus(raw.get("value", ""), raw.get("error", ""))
     unit = raw.get("unit", "")
     evidence = raw.get("evidence", "")
     origin = raw.get("origin", "")
+    reference = raw.get("reference", "").strip().strip("[]()").strip()
+    if reference != "":
+        origin = "cited"
     claimed_page = page_number(raw.get("page", ""))
     final_page = claimed_page
 
@@ -144,6 +257,11 @@ def verify_row(raw, pages, paper_name, target_properties=""):
         checks.append("evidence too short to check")
     else:
         found_page, how = find_evidence(evidence, pages, claimed_page)
+        if found_page is None and is_table_like(evidence, material):
+            found_page = find_table_row(material, value, error, pages, claimed_page, known_materials or [])
+            if found_page is not None:
+                how = "table"
+                checks.append("matched as a table row (material and value found together on the page)")
         if found_page is None:
             status = worse(status, STATUS_FLAGGED)
             checks.append("evidence not found in paper (possible hallucination)")
@@ -185,7 +303,9 @@ def verify_row(raw, pages, paper_name, target_properties=""):
 
     # where the number originally comes from is shown in its own column.
     # it does NOT lower the status: status only answers "is this number really in this paper?"
-    if "cite" in origin.lower():
+    if reference != "":
+        checks.append("originally reported in reference [" + reference + "] of this paper")
+    elif "cite" in origin.lower():
         checks.append("originally reported in another paper")
 
     property_std = ""
@@ -227,6 +347,7 @@ def verify_row(raw, pages, paper_name, target_properties=""):
     row["unit_std"] = unit_std
     row["conditions"] = raw.get("conditions", "")
     row["origin"] = origin
+    row["reference"] = reference
     row["paper"] = paper_name
     row["page"] = final_page  # None if we never found a page
     row["evidence"] = evidence

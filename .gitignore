@@ -4,3 +4,6 @@ venv/
 __pycache__/
 .pytest_cache/
 .datum_cache/
+.venv/
+.agents/
+.claude/

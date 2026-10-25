@@ -29,7 +29,7 @@ STATUS_LABELS = {
 # columns shown in the on-screen table (the csv download has all of them)
 SCREEN_COLUMNS = [
     "status", "material", "property_std", "property", "value", "error", "unit",
-    "value_std", "unit_std", "origin", "paper", "page", "checks",
+    "value_std", "unit_std", "origin", "reference", "paper", "page", "checks",
 ]
 
 
@@ -281,6 +281,7 @@ def show_results(result):
             "property_std": st.column_config.TextColumn("Target property"),
             "property": st.column_config.TextColumn("As written"),
             "origin": st.column_config.TextColumn("Origin"),
+            "reference": st.column_config.TextColumn("Ref #", width="small"),
             "value_std": st.column_config.TextColumn("Std value"),
             "unit_std": st.column_config.TextColumn("Std unit"),
             "page": st.column_config.NumberColumn("Page", format="%d"),

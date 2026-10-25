@@ -4,7 +4,7 @@
 # so if we ever add a column we add it here and nowhere else.
 
 # bump this whenever the prompt changes, so the cache doesnt hand back old answers
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v5"
 
 # the fields we ask the llm to fill in for every measurement
 LLM_FIELDS = [
@@ -17,6 +17,7 @@ LLM_FIELDS = [
     "evidence",    # the exact sentence / table row the value came from
     "conditions",  # how it was made or tested (electrolyte, thickness...), or ""
     "origin",      # "this paper" or "cited" (copied from another paper)
+    "reference",   # citation number if the value comes from a cited paper, e.g. "19"
 ]
 
 # the three possible verdicts after verification, from best to worst
@@ -38,6 +39,7 @@ TABLE_COLUMNS = [
     "unit_std",
     "conditions",
     "origin",
+    "reference",
     "paper",
     "page",
     "evidence",
