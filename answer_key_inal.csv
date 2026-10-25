@@ -1,0 +1,11 @@
+paper,material,property,value,unit,source
+41467_2017_Article_1812.pdf,PEDOT:TOS [VPP],volumetric capacitance C*,136,F cm-3,"Inal 2017 values as re-tabulated in Nat Commun 2018 (s41467-018-06084-6) Supplementary Table"
+41467_2017_Article_1812.pdf,PEDOT:TOS [VPP],μC*,72,F cm-1 V-1 s-1,same
+41467_2017_Article_1812.pdf,PEDOT:PSS + EG,volumetric capacitance C*,39,F cm-3,same
+41467_2017_Article_1812.pdf,PEDOT:PSS + EG,μC*,47,F cm-1 V-1 s-1,same
+41467_2017_Article_1812.pdf,PEDOT:PSTFSILi100,volumetric capacitance C*,26,F cm-3,same
+41467_2017_Article_1812.pdf,PEDOT:PSTFSILi100,μC*,20,F cm-1 V-1 s-1,same
+41467_2017_Article_1812.pdf,PEDOT:DS + EG,volumetric capacitance C*,65,F cm-3,same
+41467_2017_Article_1812.pdf,PEDOT:DS + EG,μC*,2.2,F cm-1 V-1 s-1,same
+41467_2017_Article_1812.pdf,PEDOT:PMATFSILi80,volumetric capacitance C*,27,F cm-3,same
+41467_2017_Article_1812.pdf,PEDOT:PMATFSILi80,μC*,0.15,F cm-1 V-1 s-1,same

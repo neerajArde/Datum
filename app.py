@@ -1,270 +1,380 @@
-# datum - team ground truth - hackpsu fall 2026
-# idea: researcher uploads papers + says which properties they care about
-# llm reads each page and pulls out measurements
-# then plain code checks the llm didnt make stuff up (hallucinations)
+# app.py
+# the screen. this file ONLY does user interface - all the real work
+# lives in pipeline.py and the modules it calls. that way a ui change
+# can never break extraction, and an extraction fix never breaks the ui.
+#
+# run with:  python -m streamlit run app.py
 
 import os
-import json
 
-import streamlit as st
 import pandas as pd
-import fitz  # this is pymupdf, it reads pdfs page by page
-from google import genai
-from rapidfuzz import fuzz
+import streamlit as st
 
+import pipeline
+from evaluate import evaluate, read_answer_key
+from highlight import render_evidence
+from providers import HEDGE_SECONDS, build_providers
+from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
 
-# swap this if theres a newer gemini model available
-MODEL_NAME = "gemini-2.5-flash"
+st.set_page_config(page_title="Datum", page_icon="◆", layout="wide")
 
+DEFAULT_PROPERTIES = "μC*, volumetric capacitance C*, electrical conductivity"
 
-# ---------------------------------------------------------
-# step 0: get the api key
-# ---------------------------------------------------------
-def get_api_key():
-    # first try streamlit secrets (this is how it works when deployed)
-    try:
-        key = st.secrets["GEMINI_API_KEY"]
-        return key
-    except Exception:
-        pass
+STATUS_LABELS = {
+    STATUS_VERIFIED: "✅ verified",
+    STATUS_REVIEW: "🟡 review",
+    STATUS_FLAGGED: "🚩 flagged",
+}
 
-    # if that didnt work, try a normal environment variable (local testing)
-    key = os.environ.get("GEMINI_API_KEY")
-    return key
-
-
-# ---------------------------------------------------------
-# step 1: read the pdf and keep page numbers
-# ---------------------------------------------------------
-def read_pdf_pages(uploaded_file):
-    # streamlit gives us the file, we turn it into raw bytes
-    pdf_bytes = uploaded_file.read()
-
-    # open the pdf from those bytes
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-
-    pages = []
-    page_number = 1
-
-    for page in doc:
-        page_text = page.get_text()
-
-        # build the dict key by key so i can see whats in it
-        page_info = {}
-        page_info["page"] = page_number
-        page_info["text"] = page_text
-
-        pages.append(page_info)
-        page_number = page_number + 1
-
-    return pages
+# columns shown in the on-screen table (the csv download has all of them)
+SCREEN_COLUMNS = [
+    "status", "material", "property_std", "property", "value", "error", "unit",
+    "value_std", "unit_std", "origin", "paper", "page", "checks",
+]
 
 
 # ---------------------------------------------------------
-# step 2: ask the llm to pull out measurements from ONE page
+# api keys: environment variable first (local + streamlit cloud),
+# then .streamlit/secrets.toml if one exists
 # ---------------------------------------------------------
-def build_prompt(page_text, target_properties):
-    # this is the "extraction schema" - the researcher tells us what to look for
-    prompt = ""
-    prompt = prompt + "You are extracting measurements from a materials science paper.\n"
-    prompt = prompt + "Only extract these properties: " + target_properties + "\n"
-    prompt = prompt + "Ignore every other number on the page.\n"
-    prompt = prompt + "Return a JSON list. Each item must have these keys:\n"
-    prompt = prompt + "  material: the material name exactly as written in the paper\n"
-    prompt = prompt + "  property: which target property this is\n"
-    prompt = prompt + "  value: the number only, as a string (example: \"490\")\n"
-    prompt = prompt + "  error: the +/- value as a string, or \"\" if there is none\n"
-    prompt = prompt + "  unit: the unit exactly as written\n"
-    prompt = prompt + "  evidence: copy the exact sentence or table row from the page, word for word\n"
-    prompt = prompt + "  conditions: processing or testing conditions mentioned (electrolyte, thickness, etc), or \"\"\n"
-    prompt = prompt + "If the page has none of the target properties, return an empty list [].\n"
-    prompt = prompt + "Never guess. Never invent values.\n\n"
-    prompt = prompt + "PAGE TEXT:\n"
-    prompt = prompt + page_text
-    return prompt
+def get_secret(name):
+    value = os.environ.get(name, "")
+    if value:
+        return value
+
+    # only touch st.secrets when a secrets file exists, otherwise streamlit shows a warning
+    secret_files = [
+        os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+        os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml"),
+    ]
+    for path in secret_files:
+        if os.path.exists(path):
+            try:
+                return str(st.secrets.get(name, ""))
+            except Exception:
+                return ""
+    return ""
 
 
-def extract_from_page(client, page_text, target_properties):
-    prompt = build_prompt(page_text, target_properties)
+# ---------------------------------------------------------
+# results: the table, the evidence viewer, accuracy, download
+# ---------------------------------------------------------
+def show_engine_report(stats, open_it):
+    # where did the time go? one line per engine
+    log = stats.get("call_log", [])
+    if len(log) == 0:
+        return
 
-    # ask gemini to answer in json mode so we dont get broken json at 3am
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config={"response_mime_type": "application/json"},
+    report = {}
+    order = []
+    for entry in log:
+        name = entry["provider"]
+        if name not in report:
+            line = {}
+            line["engine"] = name
+            line["calls"] = 0
+            line["answered"] = 0
+            line["problems"] = {}
+            line["answer_seconds"] = []
+            line["waited_seconds"] = 0.0
+            report[name] = line
+            order.append(name)
+        line = report[name]
+        line["calls"] = line["calls"] + 1
+        line["waited_seconds"] = line["waited_seconds"] + entry["seconds"]
+        if entry["outcome"] == "answered":
+            line["answered"] = line["answered"] + 1
+            line["answer_seconds"].append(entry["seconds"])
+        else:
+            outcome = entry["outcome"]
+            line["problems"][outcome] = line["problems"].get(outcome, 0) + 1
+
+    rows = []
+    for name in order:
+        line = report[name]
+        average = ""
+        if len(line["answer_seconds"]) > 0:
+            average = str(round(sum(line["answer_seconds"]) / len(line["answer_seconds"]), 1)) + " s"
+        problems = []
+        for outcome in line["problems"]:
+            problems.append(str(line["problems"][outcome]) + "× " + outcome)
+        table_row = {}
+        table_row["Engine"] = name
+        table_row["Calls"] = line["calls"]
+        table_row["Answered"] = line["answered"]
+        table_row["Avg answer time"] = average
+        table_row["Problems"] = ", ".join(problems) if problems else "none"
+        table_row["Total time spent"] = str(round(line["waited_seconds"], 1)) + " s"
+        rows.append(table_row)
+
+    with st.expander("Engine report: where the time went", expanded=open_it):
+        st.dataframe(pd.DataFrame(rows), hide_index=True)
+        st.caption(
+            "Calls run in parallel, so total time per engine can be larger than the run time. "
+            "If one engine is slower than " + str(HEDGE_SECONDS) + " s, the next engine races it."
+        )
+
+
+def show_stats(result):
+    rows = result["rows"]
+    stats = result["stats"]
+
+    counts = {STATUS_VERIFIED: 0, STATUS_REVIEW: 0, STATUS_FLAGGED: 0}
+    for row in rows:
+        counts[row["status"]] = counts[row["status"]] + 1
+
+    columns = st.columns(6)
+    columns[0].metric("Papers", stats["papers"])
+    columns[1].metric("Measurements", len(rows))
+    columns[2].metric("Verified", counts[STATUS_VERIFIED])
+    columns[3].metric("Needs review", counts[STATUS_REVIEW])
+    columns[4].metric("Flagged", counts[STATUS_FLAGGED])
+    columns[5].metric("Time", str(stats["seconds"]) + " s")
+
+    calls = []
+    for name in stats["calls_by_provider"]:
+        calls.append(name + " " + str(stats["calls_by_provider"][name]))
+    details = (
+        str(stats["pages_sent"]) + " of " + str(stats["pages_total"]) + " pages sent to the AI · "
+        + str(stats["papers_from_cache"]) + " paper(s) reused from earlier runs · "
+        + "AI calls: " + (", ".join(calls) if calls else "none")
+    )
+    st.caption(details)
+
+    show_engine_report(stats, open_it=len(result["failures"]) > 0)
+
+    if len(stats["disabled_providers"]) > 0:
+        for name in stats["disabled_providers"]:
+            st.info(name + " was switched off this run: " + stats["disabled_providers"][name][:200])
+
+    if len(result["failures"]) > 0:
+        st.warning(
+            str(len(result["failures"])) + " part(s) of the papers could not be read by any AI provider. "
+            + "Everything else is below. Press Extract again to retry just those parts "
+            + "(finished papers are reused instantly)."
+        )
+        with st.expander("What failed"):
+            st.dataframe(pd.DataFrame(result["failures"]), hide_index=True)
+
+
+def show_evidence(row):
+    st.subheader(row["material"] + " · " + row["property"])
+    left, right = st.columns([2, 3])
+
+    with left:
+        value_text = row["value"]
+        if row["error"]:
+            value_text = value_text + " ± " + row["error"]
+        st.markdown("**Value:** " + value_text + " " + row["unit"])
+        if row["value_std"] and row["unit_std"] != row["unit"]:
+            st.markdown("**Standard unit:** " + row["value_std"] + " " + row["unit_std"])
+        st.markdown("**Status:** " + STATUS_LABELS[row["status"]])
+        st.markdown("**Evidence** (page " + str(row["page"]) + " of " + row["paper"] + "):")
+        st.code(row["evidence"], language=None, wrap_lines=True)
+        if row["conditions"]:
+            st.markdown("**Conditions:** " + row["conditions"])
+        if row["checks"]:
+            st.markdown("**Checks:**")
+            for check in row["checks"].split("; "):
+                st.markdown("- " + check)
+        st.caption("Extracted by " + row["provider"])
+
+    with right:
+        pdfs = st.session_state.get("pdfs", {})
+        pdf_bytes = pdfs.get(row["paper"])
+        if "evidence not found" in row["checks"]:
+            # dont highlight anything: the sentence the ai quoted isn't in the paper
+            st.error("The quoted evidence does not exist anywhere in this paper, so there is nothing to highlight.")
+            return
+        if pdf_bytes is None or pd.isna(row["page"]):
+            st.info("No page to show for this row.")
+            return
+        image, how = render_evidence(pdf_bytes, int(row["page"]), row["evidence"], row["value"])
+        if image is None or how == "not found":
+            st.info("Couldn't locate the text on the page to highlight it.")
+            if image is not None:
+                st.image(image, width="stretch")
+            return
+        st.image(image, width="stretch")
+        if how == "value only":
+            st.caption("Highlighted by value (the full sentence wraps oddly in this PDF).")
+        else:
+            st.caption("Highlighted straight from the PDF.")
+
+
+def show_accuracy(rows):
+    with st.expander("Check accuracy against an answer key"):
+        st.write(
+            "Upload a CSV with the true values for these papers (columns: material, property, value). "
+            "Datum compares its table against it."
+        )
+        template = pd.DataFrame([{"paper": "", "material": "", "property": "", "value": "", "unit": "", "page": ""}])
+        st.download_button(
+            "Download blank answer key",
+            data=template.to_csv(index=False),
+            file_name="answer_key_template.csv",
+            mime="text/csv",
+        )
+        key_file = st.file_uploader("Answer key (CSV)", type=["csv"], key="answer_key")
+        if key_file is None:
+            return
+        try:
+            answers = read_answer_key(pd.read_csv(key_file))
+        except Exception as error:
+            st.error(str(error))
+            return
+
+        report = evaluate(rows, answers)
+        columns = st.columns(3)
+        columns[0].metric(
+            "Precision", str(round(report["precision"] * 100)) + "%",
+            help="Of the values Datum extracted, how many were right",
+        )
+        columns[1].metric(
+            "Recall", str(round(report["recall"] * 100)) + "%",
+            help="Of the true values in the answer key, how many Datum found",
+        )
+        columns[2].metric(
+            "Errors caught", str(report["wrong_caught"]) + " / " + str(report["wrong"]),
+            help="Of Datum's wrong values, how many verification already marked review or flagged",
+        )
+        st.caption(
+            str(report["correct"]) + " correct out of " + str(report["extracted"]) + " extracted · "
+            + str(report["found"]) + " of " + str(report["answer_key_size"]) + " answer-key values found"
+        )
+        if len(report["missed"]) > 0:
+            st.markdown("**Values Datum missed:**")
+            st.dataframe(pd.DataFrame(report["missed"]), hide_index=True)
+
+
+def show_results(result):
+    show_stats(result)
+    rows = result["rows"]
+
+    if len(rows) == 0:
+        st.info("No target properties were found in these papers.")
+        return
+
+    table = pd.DataFrame(rows)
+    table["row_id"] = range(len(table))
+    table["page"] = pd.to_numeric(table["page"], errors="coerce").astype("Int64")
+
+    chosen = st.multiselect(
+        "Show",
+        options=[STATUS_VERIFIED, STATUS_REVIEW, STATUS_FLAGGED],
+        default=[STATUS_VERIFIED, STATUS_REVIEW, STATUS_FLAGGED],
+        format_func=lambda status: STATUS_LABELS[status],
+    )
+    view = table[table["status"].isin(chosen)].reset_index(drop=True)
+    screen = view.copy()
+    screen["status"] = screen["status"].map(STATUS_LABELS)
+
+    event = st.dataframe(
+        screen,
+        column_order=SCREEN_COLUMNS,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="results_table",
+        column_config={
+            "status": st.column_config.TextColumn("Status", width="small"),
+            "property_std": st.column_config.TextColumn("Target property"),
+            "property": st.column_config.TextColumn("As written"),
+            "origin": st.column_config.TextColumn("Origin"),
+            "value_std": st.column_config.TextColumn("Std value"),
+            "unit_std": st.column_config.TextColumn("Std unit"),
+            "page": st.column_config.NumberColumn("Page", format="%d"),
+            "checks": st.column_config.TextColumn("Checks", width="large"),
+        },
     )
 
-    # try to turn the text into a python list
-    try:
-        rows = json.loads(response.text)
-    except Exception:
-        # if the llm messed up the json, just skip this page
-        rows = []
-
-    # sometimes it returns a single dict instead of a list
-    if isinstance(rows, dict):
-        rows = [rows]
-
-    if not isinstance(rows, list):
-        rows = []
-
-    return rows
-
-
-# ---------------------------------------------------------
-# step 3: verification - plain code, NOT the llm
-# ---------------------------------------------------------
-def clean_text(text):
-    # pdfs have weird spacing and line breaks, so squash all whitespace
-    if text is None:
-        return ""
-    text = str(text)
-    words = text.split()
-    cleaned = " ".join(words)
-    return cleaned.lower()
-
-
-def verify_row(row, page_text):
-    flags = []
-
-    evidence = clean_text(row.get("evidence", ""))
-    page = clean_text(page_text)
-    value = clean_text(row.get("value", ""))
-
-    # check 1: does the evidence actually exist on this page?
-    if evidence == "":
-        flags.append("no evidence given")
-    elif evidence in page:
-        # exact match, best case
-        pass
+    selected = event.selection.rows if event is not None else []
+    if len(selected) > 0:
+        row_id = int(view.iloc[selected[0]]["row_id"])
+        show_evidence(table[table["row_id"] == row_id].iloc[0])
     else:
-        # llms sometimes change a word or two, so do a fuzzy match
-        score = fuzz.partial_ratio(evidence, page)
-        if score < 90:
-            flags.append("evidence not found on page")
+        st.caption("Select a row to see exactly where the number came from.")
 
-    # check 2: is the number actually inside the evidence?
-    # this is what catches the "llm said 520 but the paper says 490" case
-    if value == "":
-        flags.append("no value")
-    elif value not in evidence:
-        flags.append("value not in evidence")
+    export = table.drop(columns=["row_id"])
+    st.download_button(
+        "Download CSV (all rows)",
+        data=export.to_csv(index=False),
+        file_name="datum_dataset.csv",
+        mime="text/csv",
+        type="primary",
+    )
 
-    # check 3: missing info
-    if clean_text(row.get("unit", "")) == "":
-        flags.append("missing unit")
-    if clean_text(row.get("material", "")) == "":
-        flags.append("missing material")
-    if clean_text(row.get("conditions", "")) == "":
-        flags.append("conditions missing")
-
-    # decide the final status
-    if len(flags) == 0:
-        status = "verified"
-    elif flags == ["conditions missing"]:
-        # conditions missing alone is a warning, not a failure
-        status = "verified (no conditions)"
-    else:
-        status = "FLAGGED"
-
-    return status, flags
+    show_accuracy(rows)
 
 
 # ---------------------------------------------------------
-# the app itself
+# the page
 # ---------------------------------------------------------
+providers, provider_notes = build_providers(get_secret)
+
+with st.sidebar:
+    st.header("Engines")
+    if len(providers) == 0:
+        st.error("No AI provider set up. Add at least one key: CEREBRAS_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+    for provider in providers:
+        st.markdown("● **" + provider["name"] + "** · " + provider["model"])
+    for note in provider_notes:
+        st.caption("○ " + note)
+    st.caption("If one engine is busy, Datum automatically hops to the next.")
+
+    st.divider()
+    workers = st.slider(
+        "Parallel requests", min_value=1, max_value=8, value=pipeline.DEFAULT_WORKERS,
+        help="How many AI calls run at the same time. Lower it if you hit rate limits.",
+    )
+    scan_all = st.toggle(
+        "Scan every page", value=False,
+        help="Slower. Use it if Datum misses values because a paper uses different wording.",
+    )
+    use_cache = st.toggle(
+        "Reuse earlier results", value=True,
+        help="Papers you already ran (with the same properties) load instantly.",
+    )
+
 st.title("Datum")
-st.write("Turn materials papers into a dataset where every number traces back to its source.")
+st.caption("Turn materials papers into a dataset where every number traces back to its source.")
 
-target_properties = st.text_input(
-    "Which properties are you looking for?",
-    value="μC*, volumetric capacitance C*, electrical conductivity",
-)
+properties = st.text_input("Properties to extract", value=DEFAULT_PROPERTIES)
+uploads = st.file_uploader("Papers (PDF)", type=["pdf"], accept_multiple_files=True)
 
-uploaded_files = st.file_uploader(
-    "Upload papers (PDF)",
-    type=["pdf"],
-    accept_multiple_files=True,
-)
+ready = len(providers) > 0 and uploads is not None and len(uploads) > 0 and properties.strip() != ""
+if st.button("Extract", type="primary", disabled=not ready):
+    papers = []
+    for upload in uploads:
+        paper = {}
+        paper["name"] = upload.name
+        paper["bytes"] = upload.getvalue()
+        papers.append(paper)
 
-run_button = st.button("Extract")
+    progress = st.progress(0.0, text="Reading papers…")
 
-if run_button:
-    api_key = get_api_key()
+    def on_progress(done, total, message):
+        if total == 0:
+            progress.progress(1.0, text="Everything reused from earlier runs")
+            return
+        progress.progress(done / total, text=str(done) + " / " + str(total) + " · " + message)
 
-    if api_key is None or api_key == "":
-        st.error("No GEMINI_API_KEY found. Set it as an environment variable or in Streamlit secrets.")
-    elif not uploaded_files:
-        st.warning("Upload at least one PDF first.")
-    else:
-        client = genai.Client(api_key=api_key)
-        all_rows = []
+    result = pipeline.run(
+        papers,
+        properties,
+        providers,
+        workers=workers,
+        filter_pages=not scan_all,
+        use_cache=use_cache,
+        on_progress=on_progress,
+    )
+    progress.empty()
 
-        for uploaded_file in uploaded_files:
-            st.write("Reading: " + uploaded_file.name)
-            pages = read_pdf_pages(uploaded_file)
+    pdfs = {}
+    for paper in papers:
+        pdfs[paper["name"]] = paper["bytes"]
+    st.session_state["result"] = result
+    st.session_state["pdfs"] = pdfs
 
-            progress = st.progress(0)
-            page_count = len(pages)
-
-            for i in range(page_count):
-                page_info = pages[i]
-                page_text = page_info["text"]
-
-                # skip basically empty pages, saves api calls
-                if len(page_text.strip()) < 50:
-                    progress.progress((i + 1) / page_count)
-                    continue
-
-                rows = extract_from_page(client, page_text, target_properties)
-
-                for row in rows:
-                    status, flags = verify_row(row, page_text)
-
-                    # build the final table row key by key
-                    final_row = {}
-                    final_row["material"] = row.get("material", "")
-                    final_row["property"] = row.get("property", "")
-                    final_row["value"] = row.get("value", "")
-                    final_row["error"] = row.get("error", "")
-                    final_row["unit"] = row.get("unit", "")
-                    final_row["conditions"] = row.get("conditions", "")
-                    final_row["source_file"] = uploaded_file.name
-                    final_row["page"] = page_info["page"]
-                    final_row["evidence"] = row.get("evidence", "")
-                    final_row["status"] = status
-                    final_row["flags"] = ", ".join(flags)
-
-                    all_rows.append(final_row)
-
-                progress.progress((i + 1) / page_count)
-
-        if len(all_rows) == 0:
-            st.info("No target properties found in these papers.")
-        else:
-            table = pd.DataFrame(all_rows)
-
-            # quick summary for the demo
-            verified_count = 0
-            flagged_count = 0
-            for status in table["status"]:
-                if status == "FLAGGED":
-                    flagged_count = flagged_count + 1
-                else:
-                    verified_count = verified_count + 1
-
-            st.success(
-                "Extracted " + str(len(table)) + " measurements: "
-                + str(verified_count) + " verified, "
-                + str(flagged_count) + " flagged."
-            )
-
-            st.dataframe(table)
-
-            csv_data = table.to_csv(index=False)
-            st.download_button(
-                "Download CSV",
-                data=csv_data,
-                file_name="datum_dataset.csv",
-                mime="text/csv",
-            )
+if "result" in st.session_state:
+    show_results(st.session_state["result"])
