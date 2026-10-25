@@ -15,8 +15,11 @@ from evaluate import evaluate, read_answer_key
 from highlight import render_evidence
 from providers import HEDGE_SECONDS, build_providers
 from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
+import threads
+import ui
 
-st.set_page_config(page_title="Datum", page_icon="◆", layout="wide")
+st.set_page_config(page_title="Datum", page_icon="◆", layout="wide", initial_sidebar_state="expanded")
+st.markdown(ui.CSS, unsafe_allow_html=True)
 
 DEFAULT_PROPERTIES = "μC*, volumetric capacitance C*, electrical conductivity"
 
@@ -107,7 +110,7 @@ def show_engine_report(stats, open_it):
         table_row["Total time spent"] = str(round(line["waited_seconds"], 1)) + " s"
         rows.append(table_row)
 
-    with st.expander("Engine report: where the time went", expanded=open_it):
+    if open_it:
         st.dataframe(pd.DataFrame(rows), hide_index=True)
         st.caption(
             "Calls run in parallel, so total time per engine can be larger than the run time. "
@@ -115,69 +118,38 @@ def show_engine_report(stats, open_it):
         )
 
 
-def show_stats(result):
+def show_stats(result, key):
     rows = result["rows"]
     stats = result["stats"]
 
-    counts = {STATUS_VERIFIED: 0, STATUS_REVIEW: 0, STATUS_FLAGGED: 0}
-    for row in rows:
-        counts[row["status"]] = counts[row["status"]] + 1
-
-    columns = st.columns(6)
-    columns[0].metric("Papers", stats["papers"])
-    columns[1].metric("Measurements", len(rows))
-    columns[2].metric("Verified", counts[STATUS_VERIFIED])
-    columns[3].metric("Needs review", counts[STATUS_REVIEW])
-    columns[4].metric("Flagged", counts[STATUS_FLAGGED])
-    columns[5].metric("Time", str(stats["seconds"]) + " s")
-
-    calls = []
-    for name in stats["calls_by_provider"]:
-        calls.append(name + " " + str(stats["calls_by_provider"][name]))
-    details = (
-        str(stats["pages_sent"]) + " of " + str(stats["pages_total"]) + " pages sent to the AI · "
-        + str(stats["papers_from_cache"]) + " paper(s) reused from earlier runs · "
-        + "AI calls: " + (", ".join(calls) if calls else "none")
-    )
-    st.caption(details)
-
-    show_engine_report(stats, open_it=len(result["failures"]) > 0)
-
-    if len(stats["disabled_providers"]) > 0:
-        for name in stats["disabled_providers"]:
-            st.info(name + " was switched off this run: " + stats["disabled_providers"][name][:200])
+    st.markdown(ui.trust_bar(rows, stats), unsafe_allow_html=True)
 
     if len(result["failures"]) > 0:
         st.warning(
-            str(len(result["failures"])) + " part(s) of the papers could not be read by any AI provider. "
-            + "Everything else is below. Press Extract again to retry just those parts "
-            + "(finished papers are reused instantly)."
+            str(len(result["failures"])) + " part(s) couldn't be read by any engine. "
+            + "Send the same request again to retry them. Finished papers load instantly."
         )
-        with st.expander("What failed"):
-            st.dataframe(pd.DataFrame(result["failures"]), hide_index=True)
+
+    with st.expander("Details", expanded=False):
+        calls = []
+        for name in stats["calls_by_provider"]:
+            if stats["calls_by_provider"][name] > 0:
+                calls.append(name + " " + str(stats["calls_by_provider"][name]))
+        if len(calls) > 0:
+            st.caption("Answered by: " + ", ".join(calls))
+        show_engine_report(stats, open_it=True)
+        for name in stats["disabled_providers"]:
+            st.caption(name + " was switched off this run: " + stats["disabled_providers"][name][:160])
+        if len(result["failures"]) > 0:
+            st.dataframe(pd.DataFrame(result["failures"]), hide_index=True, key="failures_" + key)
 
 
 def show_evidence(row):
-    st.subheader(row["material"] + " · " + row["property"])
-    left, right = st.columns([2, 3])
+    left, right = st.columns([2, 3], gap="large")
 
     with left:
-        value_text = row["value"]
-        if row["error"]:
-            value_text = value_text + " ± " + row["error"]
-        st.markdown("**Value:** " + value_text + " " + row["unit"])
-        if row["value_std"] and row["unit_std"] != row["unit"]:
-            st.markdown("**Standard unit:** " + row["value_std"] + " " + row["unit_std"])
-        st.markdown("**Status:** " + STATUS_LABELS[row["status"]])
-        st.markdown("**Evidence** (page " + str(row["page"]) + " of " + row["paper"] + "):")
-        st.code(row["evidence"], language=None, wrap_lines=True)
-        if row["conditions"]:
-            st.markdown("**Conditions:** " + row["conditions"])
-        if row["checks"]:
-            st.markdown("**Checks:**")
-            for check in row["checks"].split("; "):
-                st.markdown("- " + check)
-        st.caption("Extracted by " + row["provider"])
+        st.markdown(ui.evidence_card(row), unsafe_allow_html=True)
+        st.caption("Extracted by " + str(row["provider"]) + ", checked by Datum against the PDF.")
 
     with right:
         pdfs = st.session_state.get("pdfs", {})
@@ -197,12 +169,12 @@ def show_evidence(row):
             return
         st.image(image, width="stretch")
         if how == "value only":
-            st.caption("Highlighted by value (the full sentence wraps oddly in this PDF).")
+            st.caption("The value is highlighted on the page. The full quote wraps across lines in this PDF.")
         else:
-            st.caption("Highlighted straight from the PDF.")
+            st.caption("The quote, highlighted on the original page.")
 
 
-def show_accuracy(rows):
+def show_accuracy(rows, key):
     with st.expander("Check accuracy against an answer key"):
         st.write(
             "Upload a CSV with the true values for these papers (columns: material, property, value). "
@@ -214,8 +186,9 @@ def show_accuracy(rows):
             data=template.to_csv(index=False),
             file_name="answer_key_template.csv",
             mime="text/csv",
+            key="template_" + key,
         )
-        key_file = st.file_uploader("Answer key (CSV)", type=["csv"], key="answer_key")
+        key_file = st.file_uploader("Answer key (CSV)", type=["csv"], key="answer_key_" + key)
         if key_file is None:
             return
         try:
@@ -244,11 +217,11 @@ def show_accuracy(rows):
         )
         if len(report["missed"]) > 0:
             st.markdown("**Values Datum missed:**")
-            st.dataframe(pd.DataFrame(report["missed"]), hide_index=True)
+            st.dataframe(pd.DataFrame(report["missed"]), hide_index=True, key="missed_" + key)
 
 
-def show_results(result):
-    show_stats(result)
+def show_results(result, key):
+    show_stats(result, key)
     rows = result["rows"]
 
     if len(rows) == 0:
@@ -264,6 +237,8 @@ def show_results(result):
         options=[STATUS_VERIFIED, STATUS_REVIEW, STATUS_FLAGGED],
         default=[STATUS_VERIFIED, STATUS_REVIEW, STATUS_FLAGGED],
         format_func=lambda status: STATUS_LABELS[status],
+        key="show_" + key,
+        label_visibility="collapsed",
     )
     view = table[table["status"].isin(chosen)].reset_index(drop=True)
     screen = view.copy()
@@ -275,7 +250,7 @@ def show_results(result):
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
-        key="results_table",
+        key="table_" + key,
         column_config={
             "status": st.column_config.TextColumn("Status", width="small"),
             "property_std": st.column_config.TextColumn("Target property"),
@@ -294,88 +269,142 @@ def show_results(result):
         row_id = int(view.iloc[selected[0]]["row_id"])
         show_evidence(table[table["row_id"] == row_id].iloc[0])
     else:
-        st.caption("Select a row to see exactly where the number came from.")
+        st.caption("Tick a row to see where it came from.")
 
     export = table.drop(columns=["row_id"])
     st.download_button(
-        "Download CSV (all rows)",
+        "Download CSV",
         data=export.to_csv(index=False),
         file_name="datum_dataset.csv",
         mime="text/csv",
         type="primary",
+        key="csv_" + key,
     )
 
-    show_accuracy(rows)
+    show_accuracy(rows, key)
 
 
 # ---------------------------------------------------------
-# the page
+# the page: a thread list on the left, one thread on the right
 # ---------------------------------------------------------
 providers, provider_notes = build_providers(get_secret)
 
+all_threads = threads.list_threads()
+if "thread_id" not in st.session_state:
+    st.session_state["thread_id"] = all_threads[0]["id"] if len(all_threads) > 0 else None
+
+current = None
+if st.session_state["thread_id"] is not None:
+    current = threads.load(st.session_state["thread_id"])
+
 with st.sidebar:
-    st.header("Engines")
-    if len(providers) == 0:
-        st.error("No AI provider set up. Add at least one key: CEREBRAS_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY.")
-    for provider in providers:
-        st.markdown("● **" + provider["name"] + "** · " + provider["model"])
-    for note in provider_notes:
-        st.caption("○ " + note)
-    st.caption("If one engine is busy, Datum automatically hops to the next.")
+    st.markdown(ui.sidebar_mark(), unsafe_allow_html=True)
+    if st.button("New thread", key="new_thread", icon=":material/add:", width="stretch"):
+        st.session_state["thread_id"] = None
+        st.rerun()
 
-    st.divider()
-    workers = st.slider(
-        "Parallel requests", min_value=1, max_value=8, value=pipeline.DEFAULT_WORKERS,
-        help="How many AI calls run at the same time. Lower it if you hit rate limits.",
-    )
-    scan_all = st.toggle(
-        "Scan every page", value=False,
-        help="Slower. Use it if Datum misses values because a paper uses different wording.",
-    )
-    use_cache = st.toggle(
-        "Reuse earlier results", value=True,
-        help="Papers you already ran (with the same properties) load instantly.",
-    )
+    for thread in all_threads:
+        is_open = current is not None and thread["id"] == current["id"]
+        if st.button(thread["title"], key="open_" + thread["id"], width="stretch",
+                     type="primary" if is_open else "secondary"):
+            st.session_state["thread_id"] = thread["id"]
+            st.rerun()
 
-st.title("Datum")
-st.caption("Turn materials papers into a dataset where every number traces back to its source.")
+    st.markdown('<div class="dt-sidebar-spacer"></div>', unsafe_allow_html=True)
+    with st.popover("Settings", icon=":material/tune:", width="stretch"):
+        st.markdown("**Engines**")
+        if len(providers) == 0:
+            st.error("No engine set up. Add an API key to .streamlit/secrets.toml.")
+        for provider in providers:
+            st.markdown("● " + provider["name"] + " · " + provider["model"])
+        for note in provider_notes:
+            st.caption("○ " + note)
+        workers = st.slider("Parallel requests", min_value=1, max_value=8, value=pipeline.DEFAULT_WORKERS, key="workers")
+        scan_all = st.toggle("Scan every page", value=False, key="scan_all",
+                             help="Slower. Use it if a paper words things differently from your properties.")
+        use_cache = st.toggle("Reuse earlier results", value=True, key="use_cache")
+        if current is not None:
+            new_title = st.text_input("Thread name", value=current["title"], key="title_" + current["id"])
+            if new_title != current["title"]:
+                threads.rename(current, new_title)
+                threads.save(current)
+                st.rerun()
 
-properties = st.text_input("Properties to extract", value=DEFAULT_PROPERTIES)
-uploads = st.file_uploader("Papers (PDF)", type=["pdf"], accept_multiple_files=True)
+# ---- the open thread (or an empty start screen)
+if current is None or len(current["runs"]) == 0:
+    st.markdown(ui.empty_state(), unsafe_allow_html=True)
+else:
+    st.session_state["pdfs"] = threads.paper_bytes(current)
+    total_runs = len(current["runs"])
+    for index in range(total_runs):
+        run = current["runs"][index]
+        st.markdown(ui.request_bubble(run["properties"], run["papers"]), unsafe_allow_html=True)
+        key = current["id"] + "_" + str(index)
+        if index < total_runs - 1:
+            # earlier runs fold away so the latest one gets the space
+            with st.expander(ui.run_summary(run["result"]), expanded=False):
+                show_results(run["result"], key)
+        else:
+            show_results(run["result"], key)
 
-ready = len(providers) > 0 and uploads is not None and len(uploads) > 0 and properties.strip() != ""
-if st.button("Extract", type="primary", disabled=not ready):
-    papers = []
-    for upload in uploads:
-        paper = {}
-        paper["name"] = upload.name
-        paper["bytes"] = upload.getvalue()
-        papers.append(paper)
+# ---- the input bar: properties as text, pdfs as attachments
+last_properties = ""
+if current is not None and len(current["runs"]) > 0:
+    last_properties = current["runs"][-1]["properties"]
 
-    progress = st.progress(0.0, text="Reading papers…")
+placeholder = "Properties to extract, e.g. μC*, volumetric capacitance C*"
+if current is not None and len(current["papers"]) > 0:
+    placeholder = "Ask for other properties from these papers, or attach more"
 
-    def on_progress(done, total, message):
-        if total == 0:
-            progress.progress(1.0, text="Everything reused from earlier runs")
-            return
-        progress.progress(done / total, text=str(done) + " / " + str(total) + " · " + message)
+submitted = st.chat_input(placeholder, accept_file="multiple", file_type=["pdf"], key="composer")
 
-    result = pipeline.run(
-        papers,
-        properties,
-        providers,
-        workers=workers,
-        filter_pages=not scan_all,
-        use_cache=use_cache,
-        on_progress=on_progress,
-    )
-    progress.empty()
+if submitted:
+    properties = (submitted.text or "").strip() or last_properties
+    files = submitted.files or []
 
-    pdfs = {}
-    for paper in papers:
-        pdfs[paper["name"]] = paper["bytes"]
-    st.session_state["result"] = result
-    st.session_state["pdfs"] = pdfs
+    if properties == "":
+        st.toast("Type the properties you want, e.g. μC*, volumetric capacitance C*", icon=":material/info:")
+    elif len(files) == 0 and (current is None or len(current["papers"]) == 0):
+        st.toast("Attach at least one PDF with the paperclip.", icon=":material/attach_file:")
+    elif len(providers) == 0:
+        st.toast("No engine set up. Add an API key in Settings.", icon=":material/error:")
+    else:
+        if current is None:
+            current = threads.new_thread()
+            st.session_state["thread_id"] = current["id"]
+        for upload in files:
+            threads.add_paper(current, upload.name, upload.getvalue())
+        threads.save(current)
 
-if "result" in st.session_state:
-    show_results(st.session_state["result"])
+        pdfs = threads.paper_bytes(current)
+        papers = []
+        for name in pdfs:
+            paper = {}
+            paper["name"] = name
+            paper["bytes"] = pdfs[name]
+            papers.append(paper)
+
+        with st.status("Reading " + str(len(papers)) + (" paper" if len(papers) == 1 else " papers") + "…", expanded=False) as status:
+            progress = st.progress(0.0)
+
+            def on_progress(done, total, message):
+                if total == 0:
+                    progress.progress(1.0)
+                    return
+                progress.progress(done / total)
+                status.update(label=str(done) + " of " + str(total) + " parts read · " + message)
+
+            result = pipeline.run(
+                papers,
+                properties,
+                providers,
+                workers=workers,
+                filter_pages=not scan_all,
+                use_cache=use_cache,
+                on_progress=on_progress,
+            )
+            status.update(label="Done", state="complete")
+
+        threads.add_run(current, properties, list(pdfs.keys()), result)
+        threads.save(current)
+        st.rerun()
