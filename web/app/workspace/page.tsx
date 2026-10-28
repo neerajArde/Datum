@@ -8,7 +8,7 @@ import { sampleRows } from "@/lib/sample-rows";
 
 export default function WorkspacePage() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto w-full max-w-7xl px-6 py-10">
       <p className="text-sm text-zinc-500">Sample run · 1 paper</p>
       <h1 className="mb-8 text-2xl font-semibold tracking-tight text-zinc-900">
         Inal_2017_Nat_Commun
