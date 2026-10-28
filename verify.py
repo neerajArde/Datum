@@ -18,7 +18,7 @@ import re
 from rapidfuzz import fuzz
 
 from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED, TABLE_COLUMNS
-from text_tools import normalize, numbers_in, same_material_name, same_number, squash, to_number
+from text_tools import join_scientific, normalize, numbers_in, same_material_name, same_number, squash, to_number
 from units import expected_unit, standardize
 
 # how similar (0-100) a property name must be to one of the user's target properties
@@ -113,7 +113,7 @@ def match_target(prop, targets):
 
 # how far back from a value we look for its row's material name (in characters, spaces removed)
 TABLE_ROW_REACH = 200
-NUMBER_IN_TEXT = re.compile(r"-?\d+(?:\.\d+)?")
+NUMBER_IN_TEXT = re.compile(r"-?\d+(?:\.\d+)?(?:e[-+]?\d+)?")
 
 
 def is_table_like(evidence, material):
@@ -167,7 +167,7 @@ def find_table_row(material, value, error, pages, claimed_page, known_materials)
 
     for page_info in order:
         # cells stay separated by spaces, so "EG19" and "39" never merge into "1939"
-        text = normalize(page_info["text"])
+        text = join_scientific(normalize(page_info["text"]))
         text = re.sub(r"(?<=\d),(?=\d{3}\b)", "", text)
         for match in NUMBER_IN_TEXT.finditer(text):
             # a whole number only: dont match the "9" inside "19" or "1.9"

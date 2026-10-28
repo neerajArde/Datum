@@ -608,3 +608,24 @@ def test_suggestion_chips_edit_the_properties_box():
     text = suggest.apply_selection(text, names, ["electrical conductivity"])
     assert text == "mobility, electrical conductivity"         # turned-off chip removed
     assert suggest.apply_selection("", names, []) == ""
+
+
+# ---------------- scientific notation ----------------
+def test_scientific_notation_is_one_number():
+    from text_tools import numbers_in, to_number, same_number
+    for written in ["6.61 x 10-4", "6.61 × 10⁻⁴", "6.61x10^-4", "6.61e-4", "0.000661", "6.61 * 10^(-4)"]:
+        assert to_number(written) is not None and same_number(to_number(written), 0.000661), written
+    assert numbers_in("136 ± 50") == [136.0, 50.0]          # ordinary values unchanged
+    assert not same_number(1e-12, 2e-12)                     # tiny numbers are still told apart
+
+
+def test_scientific_value_verifies_against_the_pdf_text():
+    from verify import verify_row
+    # the garnet paper prints "6.61 x 10-4 S/cm"; an ai that writes 6.61e-4 is RIGHT, not hallucinating
+    pages = [{"page": 1, "text": "The maximum conductivity of 6.61 x 10-4 S/cm is obtained for 0.25 Ta ceramic."},
+             {"page": 2, "text": "Table 3\nContent of Ta (y)\nIonic Conductivity (S/cm)\n0.15\n3.50 x 10-5\n0.39"}]
+    sentence = row("0.25 Ta", "ionic conductivity", "6.61e-4", "", "S/cm", 1,
+                   "The maximum conductivity of 6.61 x 10-4 S/cm is obtained for 0.25 Ta ceramic")
+    table = row("y = 0.15", "ionic conductivity", "3.50 x 10-5", "", "S/cm", 2, "0.15 3.50 x 10-5 0.39")
+    for raw in [sentence, table]:
+        assert verify_row(raw, pages, "garnet.pdf", "ionic conductivity")["status"] == "verified"

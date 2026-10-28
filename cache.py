@@ -10,6 +10,7 @@
 import hashlib
 import json
 import os
+import uuid
 
 from schema import PROMPT_VERSION
 from text_tools import normalize
@@ -44,7 +45,8 @@ def load(key):
 def save(key, rows):
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = os.path.join(CACHE_DIR, key + ".json")
-    temp_path = path + ".tmp"
+    # unique temp name: two threads saving the same paper at once must not share a temp file
+    temp_path = path + "." + uuid.uuid4().hex[:8] + ".tmp"
     # write to a temp file first, then swap it in, so a crash never leaves half a file
     with open(temp_path, "w", encoding="utf-8") as file:
         json.dump(rows, file, ensure_ascii=False)
