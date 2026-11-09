@@ -9,7 +9,7 @@
 import re
 import unicodedata
 
-from text_tools import DASHES
+from .text_tools import DASHES
 
 # readable unit -> (standard unit, multiply by this to get the standard unit)
 # add new units here, nothing else needs to change

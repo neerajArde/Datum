@@ -1,28 +1,26 @@
-# test_datum.py
-# run with:  python -m pytest -q
+# engine/tests/test_engine.py
+# run from the repo root with:  python -m pytest -q
 # these tests use a FAKE llm (no api key, no internet), so they are fast and
 # always give the same answer. they check that our own code does the right thing:
 # routing, verification, units, caching, accuracy, highlighting.
 
 import json
 import os
-import sys
 
 import pandas as pd
 import pytest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))
-sys.path.insert(0, HERE)
+# the repo's top folder (this file is in engine/tests/), where answer_key_inal.csv lives
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import cache  # noqa: E402
-import pipeline  # noqa: E402
-import providers  # noqa: E402
-from evaluate import evaluate, read_answer_key  # noqa: E402
-from highlight import render_evidence  # noqa: E402
-from ingest import make_chunks, property_words, read_pages  # noqa: E402
-from make_fixture import build_fixture  # noqa: E402
-from units import standardize, unit_key  # noqa: E402
+from engine import cache
+from engine import pipeline
+from engine import providers
+from engine.evaluate import evaluate, read_answer_key
+from engine.highlight import render_evidence
+from engine.ingest import make_chunks, property_words, read_pages
+from engine.tests.make_fixture import build_fixture
+from engine.units import standardize, unit_key
 
 PROPERTIES = "μC*, volumetric capacitance C*, electrical conductivity"
 
@@ -275,7 +273,7 @@ def test_failed_papers_are_not_cached(paper):
 
 # ---------------- target properties ----------------
 def test_property_names_map_to_targets():
-    from verify import match_target, split_targets
+    from engine.verify import match_target, split_targets
     targets = split_targets("μC*, volumetric capacitance C*, electrical conductivity")
     cases = {
         "μC*": "μC*",
@@ -404,7 +402,7 @@ def test_highlight_handles_bad_page(paper):
 
 # ---------------- excerpts ----------------
 def test_excerpt_keeps_the_table_and_drops_unrelated_text():
-    from ingest import excerpt
+    from engine.ingest import excerpt
     filler = "Unrelated discussion of device fabrication. " * 200      # about 8,800 characters
     table = "Table 2. Electrical conductivity (S/cm)\nCrys-P\n4100 ± 98\n"
     page = filler + table + filler
@@ -426,7 +424,7 @@ def test_unreadable_single_page_goes_to_another_engine(paper):
 
 
 def test_value_with_plus_minus_is_split_and_reference_marks_cited():
-    from verify import verify_row
+    from engine.verify import verify_row
     pages = [{"page": 4, "text": "PEDOT:PSS + EG19\n39 ± 3\n1.9 ± 1.3\n47 ± 6\n"}]
     raw = row("PEDOT:PSS + EG", "μC*", "47 ± 6", "", "F cm-1 V-1 s-1", 4, "PEDOT:PSS + EG19 39 ± 3 1.9 ± 1.3 47 ± 6")
     raw["reference"] = "19"
@@ -439,7 +437,7 @@ def test_value_with_plus_minus_is_split_and_reference_marks_cited():
 
 def test_real_inal_rows_now_match_the_answer_key():
     # rows exactly as the ai returned them in the real run on the Inal paper
-    from verify import verify_row
+    from engine.verify import verify_row
     real = [
         ("PEDOT:TOS [VPP]33", "C*", "136 ± 50"), ("PEDOT:TOS [VPP]33", "μC*", "72 ± 14"),
         ("PEDOT:PSS + EG19", "C*", "39 ± 3"), ("PEDOT:PSS + EG19", "μC*", "47 ± 6"),
@@ -456,7 +454,7 @@ def test_real_inal_rows_now_match_the_answer_key():
     for material, prop, value in real:
         raw = row(material, prop, value, "", "F cm-3" if prop == "C*" else "F cm-1 V-1 s-1", 4, material + " " + value)
         rows.append(verify_row(raw, pages, "inal.pdf", PROPERTIES))
-    key = pd.read_csv(os.path.join(os.path.dirname(HERE), "answer_key_inal.csv"))
+    key = pd.read_csv(os.path.join(REPO_ROOT, "answer_key_inal.csv"))
     report = evaluate(rows, read_answer_key(key))
     assert report["found"] == 10
     assert all(r["status"] == "verified" for r in rows)
@@ -483,7 +481,7 @@ INAL_MATERIALS = ["PEDOT:PSS + EG", "PEDOT:TOS", "p(g2T-TT)", "p(g2T-T)"]
 
 
 def test_table_values_with_cells_in_between_are_verified():
-    from verify import verify_row
+    from engine.verify import verify_row
     pages = [{"page": 4, "text": INAL_PAGE}]
     # evidence exactly the way the ai wrote it in the real run: it skips the cells in between
     cases = [
@@ -500,7 +498,7 @@ def test_table_values_with_cells_in_between_are_verified():
 
 
 def test_table_value_credited_to_the_wrong_material_is_flagged():
-    from verify import verify_row
+    from engine.verify import verify_row
     pages = [{"page": 4, "text": INAL_PAGE}]
     # 261 ± 29 belongs to p(g2T-TT), not p(g2T-T) - similar names, different polymers
     wrong = inal_row("p(g2T-T)", "[µC*]OECT", "261", "29", "p(g2T-T) 261 ± 29")
@@ -517,7 +515,7 @@ def test_table_value_credited_to_the_wrong_material_is_flagged():
 
 
 def test_scorer_does_not_confuse_similar_polymer_names():
-    from evaluate import same_material
+    from engine.evaluate import same_material
     assert same_material("PEDOT:TOS", "PEDOT:TOS [VPP]")
     assert same_material("PEDOT:PSS + EG19", "PEDOT:PSS + EG")
     assert not same_material("p(g2T-TT)", "p(g2T-T)")
@@ -539,51 +537,9 @@ def test_stages_are_reported_in_order_from_real_events(paper):
     assert ("extract", "Reusing earlier results") in details
 
 
-# ---------------- threads (saved to disk) ----------------
-def test_thread_lifecycle(tmp_path, monkeypatch):
-    import threads
-    monkeypatch.setattr(threads, "THREADS_DIR", str(tmp_path / "threads"))
-    t = threads.new_thread()
-    assert t["title"] == "New thread"
-    threads.add_paper(t, "Inal_2017.pdf", b"%PDF-1")
-    threads.add_paper(t, "PNAS_2016.pdf", b"%PDF-2")
-    assert t["title"] == "Inal_2017 + 1 more"          # default name = the file names
-    threads.remove_paper(t, "PNAS_2016.pdf")
-    assert t["title"] == "Inal_2017"
-    threads.rename(t, "OECT benchmark")
-    threads.add_paper(t, "Extra.pdf", b"%PDF-3")
-    assert t["title"] == "OECT benchmark"              # a chosen name is never overwritten
-    t["properties"] = "μC*"
-    threads.save(t)
-    again = threads.load(t["id"])                        # survives a reload
-    assert again["title"] == "OECT benchmark" and again["properties"] == "μC*"
-    assert sorted(threads.paper_bytes(again).keys()) == ["Extra.pdf", "Inal_2017.pdf"]
-    threads.delete(t["id"])
-    assert threads.load(t["id"]) is None
-    assert threads.list_threads() == []
-
-
-def test_spaces_keep_visitors_apart(tmp_path, monkeypatch):
-    # on a public deploy every browser has its own space; one visitor never sees another's papers
-    import threads
-    monkeypatch.setattr(threads, "THREADS_DIR", str(tmp_path / "threads"))
-    alice, bob = threads.new_space_id(), threads.new_space_id()
-    a = threads.new_thread(alice)
-    threads.add_paper(a, "Inal_2017.pdf", b"%PDF-1")
-    threads.save(a)
-    assert [t["id"] for t in threads.list_threads(alice)] == [a["id"]]
-    assert threads.list_threads(bob) == []
-    assert threads.load(a["id"], bob) is None            # knowing the thread id isn't enough
-    threads.delete(a["id"], bob)                         # bob can't delete it either
-    assert threads.load(a["id"], alice) is not None
-    assert threads.list_threads("") == []                # the shared local list doesn't show space folders
-    assert threads.clean_space("../../etc") == ""        # junk in the url can't escape the folder
-    assert threads.load("../" + alice, "") is None
-
-
 # ---------------- suggested properties ----------------
 def test_suggestions_keep_only_names_in_the_paper(paper):
-    import suggest
+    from engine import suggest
     def fake_suggest(prompt):
         assert "Supplementary Table 2" in prompt          # the skim includes the tables
         return json.dumps({"rows": [
@@ -600,7 +556,7 @@ def test_suggestions_keep_only_names_in_the_paper(paper):
 
 
 def test_suggestion_chips_edit_the_properties_box():
-    import suggest
+    from engine import suggest
     names = ["μC*", "electrical conductivity"]
     text = suggest.apply_selection("mobility", names, ["μC*"])
     assert text == "mobility, μC*"                              # typed text stays, chip added
@@ -612,7 +568,7 @@ def test_suggestion_chips_edit_the_properties_box():
 
 # ---------------- scientific notation ----------------
 def test_scientific_notation_is_one_number():
-    from text_tools import numbers_in, to_number, same_number
+    from engine.text_tools import numbers_in, to_number, same_number
     for written in ["6.61 x 10-4", "6.61 × 10⁻⁴", "6.61x10^-4", "6.61e-4", "0.000661", "6.61 * 10^(-4)"]:
         assert to_number(written) is not None and same_number(to_number(written), 0.000661), written
     assert numbers_in("136 ± 50") == [136.0, 50.0]          # ordinary values unchanged
@@ -620,7 +576,7 @@ def test_scientific_notation_is_one_number():
 
 
 def test_scientific_value_verifies_against_the_pdf_text():
-    from verify import verify_row
+    from engine.verify import verify_row
     # the garnet paper prints "6.61 x 10-4 S/cm"; an ai that writes 6.61e-4 is RIGHT, not hallucinating
     pages = [{"page": 1, "text": "The maximum conductivity of 6.61 x 10-4 S/cm is obtained for 0.25 Ta ceramic."},
              {"page": 2, "text": "Table 3\nContent of Ta (y)\nIonic Conductivity (S/cm)\n0.15\n3.50 x 10-5\n0.39"}]

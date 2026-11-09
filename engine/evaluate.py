@@ -10,8 +10,8 @@ import re
 
 from rapidfuzz import fuzz
 
-from schema import STATUS_VERIFIED
-from text_tools import normalize, same_material_name, squash, to_number
+from .schema import STATUS_VERIFIED
+from .text_tools import normalize, same_material_name, squash, to_number
 
 # values count as equal if they are within 0.5% of each other
 VALUE_TOLERANCE = 0.005

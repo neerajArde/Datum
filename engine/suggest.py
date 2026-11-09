@@ -10,10 +10,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 from rapidfuzz import fuzz
 
-import cache
-from ingest import fingerprint, read_pages
-from providers import AllProvidersFailed, BadOutputError, ask, new_router
-from text_tools import normalize, squash
+from . import cache
+from .ingest import fingerprint, read_pages
+from .providers import AllProvidersFailed, BadOutputError, ask, new_router
+from .text_tools import normalize, squash
 
 SUGGEST_VERSION = "s1"     # bump when the prompt below changes, so old cached lists are ignored
 MAX_PAPERS = 8              # suggestions from the first 8 papers are plenty

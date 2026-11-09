@@ -9,7 +9,7 @@ import hashlib
 
 import pymupdf  # reads pdfs page by page (old name: fitz)
 
-from text_tools import normalize
+from .text_tools import normalize
 
 # filler words we never use for the "is this page relevant" check
 STOP_WORDS = ["of", "and", "the", "a", "an", "in", "for", "to", "or", "with", "on", "at"]

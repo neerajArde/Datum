@@ -1,0 +1,7 @@
+# Project settings for Python tools.
+
+[tool.pytest.ini_options]
+# put the repo root on Python's import path, so tests can `import engine` and `import threads`
+pythonpath = ["."]
+# where the tests live
+testpaths = ["engine/tests", "tests"]

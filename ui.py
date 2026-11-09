@@ -8,7 +8,7 @@
 
 import html
 
-from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
+from engine.schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
 
 STAGE_LABELS = ["Ingest", "Filter", "Extract", "Verify", "Assemble"]
 

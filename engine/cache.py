@@ -12,8 +12,8 @@ import json
 import os
 import uuid
 
-from schema import PROMPT_VERSION
-from text_tools import normalize
+from .schema import PROMPT_VERSION
+from .text_tools import normalize
 
 # folder where cached answers live (ignored by git)
 CACHE_DIR = os.environ.get("DATUM_CACHE_DIR", ".datum_cache")
