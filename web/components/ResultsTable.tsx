@@ -1,18 +1,25 @@
 // components/ResultsTable.tsx
-// The table of extracted values, the filter buttons above it, and the evidence card
-// for whichever row is selected.
+// The table of extracted values, the filter buttons above it, and the evidence panel
+// for whichever row is selected (where you can also accept / edit / reject it).
 
 // "use client" = this component runs in the browser, because it has state (useState)
-// and reacts to clicks. Everything it imports (FilterButtons, StatusBadge, EvidenceCard) runs there too.
+// and reacts to clicks. Everything it imports (FilterButtons, StatusBadge, EvidencePanel) runs there too.
 "use client";
 
 import { useState } from "react";
 import type { Row } from "@/lib/types";
+import type { Decision, Decisions } from "@/lib/review";
 import FilterButtons, { type Filter } from "./FilterButtons";
 import StatusBadge from "./StatusBadge";
-import EvidenceCard from "./EvidenceCard";
+import EvidencePanel from "./EvidencePanel";
 
-export default function ResultsTable({ rows }: { rows: Row[] }) {
+type Props = {
+  rows: Row[];
+  decisions?: Decisions; //                                optional: what's been accepted / edited / rejected
+  onDecide?: (id: string, decision: Decision) => void; //   optional: lets the panel record decisions
+};
+
+export default function ResultsTable({ rows, decisions = {}, onDecide }: Props) {
   // STATE 1: which filter is selected. Starts at "all".
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -54,12 +61,12 @@ export default function ResultsTable({ rows }: { rows: Row[] }) {
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Material</th>
-                  <th className="px-4 py-3 font-medium">Property</th>
-                  <th className="px-4 py-3 font-medium">Value</th>
-                  <th className="px-4 py-3 font-medium">Unit</th>
-                  <th className="px-4 py-3 font-medium">Page</th>
+                  <th className="px-3 py-3 font-medium">Status</th>
+                  <th className="px-3 py-3 font-medium">Material</th>
+                  <th className="px-3 py-3 font-medium">Property</th>
+                  <th className="px-3 py-3 font-medium">Value</th>
+                  <th className="px-3 py-3 font-medium">Page</th>
+                  <th className="px-3 py-3 font-medium">Decision</th>
                 </tr>
               </thead>
               <tbody>
@@ -80,17 +87,18 @@ export default function ResultsTable({ rows }: { rows: Row[] }) {
                         isSelected ? "bg-yellow-50" : "hover:bg-zinc-50"
                       }`}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <StatusBadge status={row.status} />
                       </td>
-                      <td className="px-4 py-3 text-zinc-900">{row.material}</td>
-                      <td className="px-4 py-3 text-zinc-600">{row.property}</td>
-                      <td className="px-4 py-3 font-mono text-zinc-900">
-                        {row.value}
-                        {row.error !== "" && <span className="text-zinc-500"> ± {row.error}</span>}
+                      <td className="px-3 py-3 text-zinc-900">{row.material}</td>
+                      <td className="px-3 py-3 text-zinc-600">{row.property}</td>
+                      <td className="px-3 py-3 text-zinc-900">
+                        <span className="font-mono">{row.value}</span>
+                        {row.error !== "" && <span className="font-mono text-zinc-600"> ± {row.error}</span>}
+                        <span className="ml-1.5 text-xs text-zinc-500">{row.unit}</span>
                       </td>
-                      <td className="px-4 py-3 text-zinc-600">{row.unit}</td>
-                      <td className="px-4 py-3 text-zinc-600">p. {row.page}</td>
+                      <td className="px-3 py-3 text-zinc-600">p. {row.page}</td>
+                      <td className="px-3 py-3 text-zinc-600">{describe(row, decisions[row.id])}</td>
                     </tr>
                   );
                 })}
@@ -99,11 +107,25 @@ export default function ResultsTable({ rows }: { rows: Row[] }) {
           </div>
         )}
 
-        {/* the card gets the selected row as a PROP; it doesn't know about clicks or filters */}
+        {/* the panel gets the selected row as a PROP; it doesn't know about clicks or filters.
+            key = new row -> fresh panel, so its edit box and "more notes" start closed */}
         <div className="lg:sticky lg:top-6">
-          <EvidenceCard row={selected} />
+          <EvidencePanel
+            key={selected?.id ?? "none"}
+            row={selected}
+            decision={selected !== null ? decisions[selected.id] : undefined}
+            onDecide={onDecide !== undefined && selected !== null ? (decision) => onDecide(selected.id, decision) : undefined}
+          />
         </div>
       </div>
     </section>
   );
+}
+
+// a short label for the Decision column
+function describe(row: Row, decision: Decisions[string] | undefined): string {
+  if (decision === undefined) return row.status === "verified" ? "✓ auto" : "—";
+  if (decision.kind === "accepted") return "✓ accepted";
+  if (decision.kind === "rejected") return "✕ rejected";
+  return `✎ ${decision.value}`;
 }

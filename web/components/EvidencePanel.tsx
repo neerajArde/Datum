@@ -1,0 +1,243 @@
+// components/EvidencePanel.tsx
+// THE one view of a value, used everywhere:
+//   - compact: beside the table, for scanning (no `review` prop)
+//   - focus:   in review mode, one value at a time, with the queue and keyboard shortcuts
+// Same order in both: answer first (value + verdict), proof second (quote + page), then decide.
+
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Row } from "@/lib/types";
+import { notesFor, verdictFor, type Decision, type Level } from "@/lib/review";
+import { splitAtValue } from "@/lib/highlight";
+import StatusBadge from "./StatusBadge";
+
+// Only passed in review mode. Its presence is what switches the panel to "focus".
+export type ReviewNav = {
+  position: number; // 1-based place in the queue
+  total: number;
+  onNext: () => void;
+  onPrevious: () => void;
+  onExit: () => void;
+};
+
+type Props = {
+  row: Row | null;
+  decision?: Decision;
+  onDecide?: (decision: Decision) => void; // leave out to show the panel read-only
+  review?: ReviewNav;
+};
+
+const VERDICT_STYLE = {
+  good: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  careful: "border-amber-200 bg-amber-50 text-amber-900",
+  stop: "border-red-200 bg-red-50 text-red-900",
+};
+const VERDICT_ICON = { good: "✅", careful: "⚠️", stop: "⛔" };
+const LEVEL_DOT: Record<Level, string> = { blocker: "bg-red-500", caution: "bg-amber-500", info: "bg-zinc-300" };
+
+export default function EvidencePanel({ row, decision, onDecide, review }: Props) {
+  const focus = review !== undefined;
+
+  // STATE: are we typing a corrected value, and are the extra notes open?
+  // (The parent gives this component a new `key` per row, so these reset for each value.)
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(row?.value ?? "");
+  const [showAll, setShowAll] = useState(false);
+  // beside the table, verified rows hide their buttons until "Report a problem" is clicked
+  const [reporting, setReporting] = useState(false);
+
+  // Keyboard shortcuts, ONLY in review mode (so a stray key in the table never rejects a value).
+  // useEffect = "do this outside of drawing": listen for keys while the panel is on screen,
+  // and stop listening when it goes away (the function we return).
+  useEffect(() => {
+    if (review === undefined || row === null || onDecide === undefined) return;
+    const value = row.value;
+    const nav = review;
+    const decide = onDecide;
+    function onKey(event: KeyboardEvent) {
+      if (editing) return; // while typing a correction, letters are just letters
+      const key = event.key.toLowerCase();
+      if (key === "j") nav.onNext();
+      else if (key === "k") nav.onPrevious();
+      else if (key === "a") decide({ kind: "accepted" });
+      else if (key === "r") decide({ kind: "rejected" });
+      else if (key === "e") {
+        event.preventDefault(); // don't type "e" into the box we're about to open
+        setDraft(value);
+        setEditing(true);
+      } else if (key === "escape") nav.onExit();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, row, onDecide, review]);
+
+  // nothing selected yet (table view): a gentle hint instead of an empty box
+  if (row === null) {
+    return (
+      <aside className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-500">
+        Select a row to see where its value came from.
+      </aside>
+    );
+  }
+
+  const notes = notesFor(row);
+  const verdict = verdictFor(row, notes);
+  const extraNotes = notes.slice(1); // the first note is already in the verdict
+  const parts = splitAtValue(row.evidence, row.value);
+
+  // Verified rows are accepted automatically, so beside the table they show no buttons,
+  // just a quiet "Report a problem". In review mode (e.g. a spot-check) buttons always show.
+  const quiet = !focus && row.status === "verified" && !reporting && decision === undefined;
+
+  function startEdit() {
+    setDraft(row?.value ?? "");
+    setEditing(true);
+  }
+  function saveEdit() {
+    const value = draft.trim();
+    if (onDecide !== undefined && value !== "" && value !== row?.value) onDecide({ kind: "edited", value });
+    setEditing(false);
+  }
+
+  return (
+    <aside className={`space-y-4 rounded-xl border border-zinc-200 bg-white ${focus ? "p-6" : "p-5"}`}>
+      {/* review mode only: back link and place in the queue */}
+      {review !== undefined && (
+        <div className="flex items-center justify-between text-sm text-zinc-500">
+          <button type="button" onClick={review.onExit} className="hover:text-zinc-900">
+            ← Back to table
+          </button>
+          <span>
+            {review.position} of {review.total} · <kbd className="font-mono">K</kbd> ↑ <kbd className="font-mono">J</kbd> ↓
+          </span>
+        </div>
+      )}
+
+      {/* 1. the answer: what was found */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-zinc-500">
+            {row.material} · {row.property}
+          </p>
+          <p className={`font-semibold tracking-tight text-zinc-900 ${focus ? "text-3xl" : "text-2xl"}`}>
+            {decision?.kind === "edited" ? (
+              <>
+                <span className="text-zinc-400 line-through">{row.value}</span> {decision.value}
+              </>
+            ) : (
+              row.value
+            )}
+            {row.error !== "" && <span className="text-zinc-600"> ± {row.error}</span>}
+            <span className="ml-2 text-base font-normal text-zinc-500">{row.unit}</span>
+          </p>
+        </div>
+        <StatusBadge status={row.status} />
+      </div>
+
+      {/* 2. the verdict: one sentence answering "can I use this number?" */}
+      <p className={`rounded-lg border px-4 py-3 text-sm ${VERDICT_STYLE[verdict.tone]}`}>
+        {VERDICT_ICON[verdict.tone]} {verdict.text}
+      </p>
+
+      {extraNotes.length > 0 && (
+        <div className="text-sm text-zinc-600">
+          <button type="button" onClick={() => setShowAll(!showAll)} className="text-zinc-500 hover:text-zinc-900">
+            {showAll ? "▾" : "▸"} {extraNotes.length} more {extraNotes.length === 1 ? "note" : "notes"}
+          </button>
+          {showAll && (
+            <ul className="mt-2 space-y-1.5">
+              {extraNotes.map((note) => (
+                <li key={note.text} className="flex items-start gap-2">
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${LEVEL_DOT[note.level]}`} />
+                  {note.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* 3. the proof: for now the quote in a page-style box; the real PDF page comes with the backend */}
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-1">
+        <p className="px-3 pt-2 text-xs text-zinc-500">
+          Page {row.page} of {row.paper}
+          {row.origin === "cited" && row.reference !== "" && <> · from reference [{row.reference}]</>}
+        </p>
+        <blockquote
+          className={`m-2 rounded bg-white p-4 font-serif leading-relaxed text-zinc-800 shadow-sm ${
+            focus ? "text-base" : "text-sm"
+          }`}
+        >
+          {parts === null ? (
+            row.evidence
+          ) : (
+            <>
+              {parts[0]}
+              <mark className="rounded bg-yellow-200 px-0.5 text-zinc-900">{parts[1]}</mark>
+              {parts[2]}
+            </>
+          )}
+        </blockquote>
+      </div>
+
+      {/* 4. decide */}
+      {onDecide !== undefined && quiet && (
+        <button type="button" onClick={() => setReporting(true)} className="text-sm text-zinc-500 hover:text-zinc-900">
+          ⋯ Report a problem with this value
+        </button>
+      )}
+      {onDecide !== undefined &&
+        !quiet &&
+        (editing ? (
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault(); // stay on the page instead of the browser's default form submit
+              saveEdit();
+            }}
+          >
+            <input
+              autoFocus
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setEditing(false);
+              }}
+              aria-label="Corrected value"
+              className="min-w-0 flex-1 rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm"
+            />
+            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+              Save
+            </button>
+          </form>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <ActionButton label="Accept" shortcut={focus ? "A" : undefined} active={decision?.kind === "accepted"} onClick={() => onDecide({ kind: "accepted" })} />
+            <ActionButton label="Edit" shortcut={focus ? "E" : undefined} active={decision?.kind === "edited"} onClick={startEdit} />
+            <ActionButton label="Reject" shortcut={focus ? "R" : undefined} active={decision?.kind === "rejected"} onClick={() => onDecide({ kind: "rejected" })} />
+          </div>
+        ))}
+
+      <p className="text-xs text-zinc-400">Extracted by {row.provider}</p>
+    </aside>
+  );
+}
+
+// shortcut hints are shown only in review mode, where the shortcuts actually work
+function ActionButton(props: { label: string; shortcut?: string; onClick: () => void; active: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium ${
+        props.active ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+      }`}
+    >
+      {props.shortcut !== undefined && (
+        <kbd className={`rounded px-1.5 font-mono text-xs ${props.active ? "bg-white/20" : "bg-zinc-100"}`}>{props.shortcut}</kbd>
+      )}
+      {props.label}
+    </button>
+  );
+}

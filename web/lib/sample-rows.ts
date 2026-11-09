@@ -1,6 +1,7 @@
 // lib/sample-rows.ts
 // TEMPORARY: 12 real rows from Datum's run on Inal et al., Nat. Commun. 2017.
 // Lets us build and test the UI before the backend exists. Delete once the API is live.
+// demoRows (at the bottom) are HAND-MADE to exercise the review warnings; see the note there.
 
 import type { Row } from "./types";
 
@@ -296,5 +297,129 @@ export const sampleRows: Row[] = [
       "unit F cm⁻¹ V⁻¹ s⁻¹ doesn't fit this property (expected F/cm³)"
     ],
     "provider": "Cerebras"
+  }
+];
+
+// HAND-MADE demo rows, NOT Datum output. d1–d4 use real sentences from a 2021 Chem. Sci. review
+// (page 1196), chosen because their wording is tricky ("respectively", "up to", a range).
+// d5 is deliberately WRONG (261 typed as 216) so the prototype has a flagged row to show.
+export const demoRows: Row[] = [
+  {
+    "id": "d1",
+    "status": "review",
+    "material": "DPP-based polymer",
+    "property": "hole mobility",
+    "property_std": "mobility",
+    "value": "3.97",
+    "error": "",
+    "unit": "cm2 V−1 s−1",
+    "value_std": 3.97,
+    "error_std": null,
+    "unit_std": "cm² V⁻¹ s⁻¹",
+    "conditions": "",
+    "origin": "cited",
+    "reference": "66",
+    "paper": "Chem_Sci_2021_review.pdf",
+    "page": 4,
+    "evidence": "They achieved hole and electron mobilities of 3.97 and 2.20 cm2 V−1 s−1, respectively, in DPP-based polymers with selenophene units in the main backbone and siloxane-terminated hexyl in side chains.",
+    "checks": [
+      "originally reported in reference [66] of this paper",
+      "no conditions stated"
+    ],
+    "provider": "sample"
+  },
+  {
+    "id": "d2",
+    "status": "review",
+    "material": "DPP-based polymer",
+    "property": "electron mobility",
+    "property_std": "mobility",
+    "value": "2.20",
+    "error": "",
+    "unit": "cm2 V−1 s−1",
+    "value_std": 2.2,
+    "error_std": null,
+    "unit_std": "cm² V⁻¹ s⁻¹",
+    "conditions": "",
+    "origin": "cited",
+    "reference": "66",
+    "paper": "Chem_Sci_2021_review.pdf",
+    "page": 4,
+    "evidence": "They achieved hole and electron mobilities of 3.97 and 2.20 cm2 V−1 s−1, respectively, in DPP-based polymers with selenophene units in the main backbone and siloxane-terminated hexyl in side chains.",
+    "checks": [
+      "originally reported in reference [66] of this paper",
+      "no conditions stated"
+    ],
+    "provider": "sample"
+  },
+  {
+    "id": "d3",
+    "status": "review",
+    "material": "n-doped aldol-condensed polymer",
+    "property": "electrical conductivity",
+    "property_std": "electrical conductivity",
+    "value": "1.1",
+    "error": "",
+    "unit": "S cm−1",
+    "value_std": 1.1,
+    "error_std": null,
+    "unit_std": "S/cm",
+    "conditions": "n-doped",
+    "origin": "cited",
+    "reference": "62",
+    "paper": "Chem_Sci_2021_review.pdf",
+    "page": 4,
+    "evidence": "Lu et al. n-doped aldol-condensed polymers and achieved stable conductivities of up to 1.1 S cm−1, suggesting their potential application in organic thermoelectrics.",
+    "checks": [
+      "originally reported in reference [62] of this paper"
+    ],
+    "provider": "sample"
+  },
+  {
+    "id": "d4",
+    "status": "review",
+    "material": "rigid aldol-condensed polymers",
+    "property": "electron mobility",
+    "property_std": "mobility",
+    "value": "0.2",
+    "error": "",
+    "unit": "cm2 V−1 s−1",
+    "value_std": 0.2,
+    "error_std": null,
+    "unit_std": "cm² V⁻¹ s⁻¹",
+    "conditions": "FETs",
+    "origin": "cited",
+    "reference": "60",
+    "paper": "Chem_Sci_2021_review.pdf",
+    "page": 4,
+    "evidence": "These rigid polymers exhibited air stable electron transport in FETs with mobility ranging from 10−5 to 0.2 cm2 V−1 s−1.",
+    "checks": [
+      "originally reported in reference [60] of this paper"
+    ],
+    "provider": "sample"
+  },
+  {
+    "id": "d5",
+    "status": "flagged",
+    "material": "p(g2T-TT)",
+    "property": "µC*",
+    "property_std": "μC*",
+    "value": "216",
+    "error": "29",
+    "unit": "F cm−1 V−1 s−1",
+    "value_std": 216,
+    "error_std": 29,
+    "unit_std": "F cm⁻¹ V⁻¹ s⁻¹",
+    "conditions": "",
+    "origin": "cited",
+    "reference": "22",
+    "paper": "Inal_2017_Nat_Commun.pdf",
+    "page": 3,
+    "evidence": "the top performer to date is p(g2T-TT), a glycolated thiophene-thienothiophene polymer22, with a µC* of 261 ± 29 F cm−1 V−1 s−1.",
+    "checks": [
+      "value not in evidence (possible hallucination)",
+      "originally reported in reference [22] of this paper"
+    ],
+    "provider": "sample"
   }
 ];
