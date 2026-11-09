@@ -12,9 +12,10 @@ import Card from "./ui/Card";
 
 type Props = {
   onExtract: (input: { properties: string; papers: Paper[] }) => void;
+  busy?: boolean; // true while a run is in progress: Extract is disabled so it can't be double-clicked
 };
 
-export default function Composer({ onExtract }: Props) {
+export default function Composer({ onExtract, busy = false }: Props) {
   // STATE: what the researcher typed, the papers they added, drag-over highlight, and skip messages
   const [properties, setProperties] = useState("");
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -116,8 +117,8 @@ export default function Composer({ onExtract }: Props) {
       {/* 3. go */}
       <div className="flex items-center justify-end gap-3">
         {!ready && <span className="text-sm text-faint">Add at least one paper</span>}
-        <Button size="lg" disabled={!ready} onClick={() => onExtract({ properties: properties.trim(), papers })}>
-          {extractAll ? "Extract all" : "Extract"}
+        <Button size="lg" disabled={!ready || busy} onClick={() => onExtract({ properties: properties.trim(), papers })}>
+          {busy ? "Extracting…" : extractAll ? "Extract all" : "Extract"}
         </Button>
       </div>
     </Card>

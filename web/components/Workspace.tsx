@@ -1,6 +1,6 @@
 // components/Workspace.tsx
-// The whole thread: the composer on top, and once Extract is clicked, the results below
-// (download bar, triage, then the table or review mode).
+// The whole thread: the composer on top; on Extract, the pipeline bar shows progress;
+// when the run is done, the results appear below (download bar, triage, then the table or review mode).
 // Holds the review session: every decision made, and which values are being reviewed.
 // Shows the triage bar on top, then either review mode (the evidence panel in focus size,
 // one value at a time) or the full results table (the same panel in compact size).
@@ -8,18 +8,22 @@
 
 "use client";
 
-import { useState } from "react";
-import type { Row, Status } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { Row, Run, Status } from "@/lib/types";
+import type { Paper } from "@/lib/papers";
+import { startSampleRun } from "@/lib/sample-run";
 import type { Decision, Decisions } from "@/lib/review";
 import TriageBar from "./TriageBar";
 import ExportBar from "./ExportBar";
 import Composer from "./Composer";
+import PipelineBar from "./PipelineBar";
 import EvidencePanel from "./EvidencePanel";
 import ResultsTable from "./ResultsTable";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
-export default function Workspace({ rows }: { rows: Row[] }) {
+// sampleRows: what the PROTOTYPE run returns. The real backend will return the real rows instead.
+export default function Workspace({ sampleRows }: { sampleRows: Row[] }) {
   // STATE: every decision so far (row id -> decision)
   const [decisions, setDecisions] = useState<Decisions>({});
   // STATE: the review queue (row ids to go through) and where we are in it. null = no review running.
@@ -27,8 +31,29 @@ export default function Workspace({ rows }: { rows: Row[] }) {
   const [position, setPosition] = useState(0);
   // STATE: should the download include values still waiting for review? Default: no (verified only).
   const [includeReview, setIncludeReview] = useState(false);
-  // STATE: has Extract been clicked? PROTOTYPE: it then shows the sample rows; the backend will run the real pipeline.
-  const [extracted, setExtracted] = useState(false);
+  // STATE: the current run (null = Extract not clicked yet). It moves queued -> running -> done.
+  const [run, setRun] = useState<Run | null>(null);
+
+  // A REF holding the "cancel" function of the run in progress. A ref (not state) because changing it
+  // shouldn't redraw anything; we only need to remember it.
+  const cancelRun = useRef<(() => void) | null>(null);
+
+  // when the page goes away, stop any run so its timers don't update a screen that no longer exists
+  useEffect(() => () => cancelRun.current?.(), []);
+
+  function extract(input: { properties: string; papers: Paper[] }) {
+    cancelRun.current?.(); // a new Extract replaces any run still going
+    // new results = a fresh review session
+    setDecisions({});
+    setQueue(null);
+    setPosition(0);
+    // PROTOTYPE: fake progress, then the sample rows. Later: send papers + properties to the backend.
+    cancelRun.current = startSampleRun(input.papers, sampleRows, setRun);
+  }
+
+  const running = run !== null && (run.status === "queued" || run.status === "running");
+  // the rows on screen are whatever the finished run returned
+  const rows = run?.status === "done" ? run.rows : [];
 
   // record a decision. A NEW object, so React notices the change.
   function record(id: string, decision: Decision) {
@@ -60,10 +85,13 @@ export default function Workspace({ rows }: { rows: Row[] }) {
     <div className="space-y-6">
       {/* ONE composer, always in the same spot. (Rendering it in two different places would make React
           treat them as two different composers, and the added papers would vanish on Extract.) */}
-      <Composer onExtract={() => setExtracted(true)} />
+      <Composer onExtract={extract} busy={running} />
 
-      {/* everything below appears once Extract has been clicked */}
-      {extracted && (
+      {/* progress, from the moment Extract is clicked */}
+      {run !== null && <PipelineBar run={run} />}
+
+      {/* everything below appears once the run is done */}
+      {run?.status === "done" && (
         <>
           <p className="text-sm text-soft">Showing sample results. The real extraction arrives with the backend.</p>
 
