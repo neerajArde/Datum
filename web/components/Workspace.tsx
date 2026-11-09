@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { Row, Status } from "@/lib/types";
 import type { Decision, Decisions } from "@/lib/review";
 import TriageBar from "./TriageBar";
+import ExportBar from "./ExportBar";
 import EvidencePanel from "./EvidencePanel";
 import ResultsTable from "./ResultsTable";
 
@@ -19,6 +20,8 @@ export default function Workspace({ rows }: { rows: Row[] }) {
   // STATE: the review queue (row ids to go through) and where we are in it. null = no review running.
   const [queue, setQueue] = useState<string[] | null>(null);
   const [position, setPosition] = useState(0);
+  // STATE: should the download include values still waiting for review? Default: no (verified only).
+  const [includeReview, setIncludeReview] = useState(false);
 
   // record a decision. A NEW object, so React notices the change.
   function record(id: string, decision: Decision) {
@@ -48,6 +51,9 @@ export default function Workspace({ rows }: { rows: Row[] }) {
 
   return (
     <div className="space-y-6">
+      {/* the fast path first: most researchers just want the table */}
+      <ExportBar rows={rows} decisions={decisions} includeReview={includeReview} onIncludeReviewChange={setIncludeReview} />
+
       <TriageBar
         rows={rows}
         decisions={decisions}
