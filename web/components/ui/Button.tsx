@@ -24,15 +24,15 @@ const SIZES: Record<Size, string> = {
   lg: "px-4 py-2",
 };
 
+// The classes for a given look. Exported so a LINK can look like a button too
+// (e.g. "Open Datum" on the landing page is a link to /workspace, not a button).
+export function buttonStyles(variant: Variant = "primary", size: Size = "md"): string {
+  return `inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${SIZES[size]} ${VARIANTS[variant]}`;
+}
+
 // ComponentProps<"button"> = every normal <button> prop (onClick, disabled, type...) plus ours
 type Props = ComponentProps<"button"> & { variant?: Variant; size?: Size };
 
 export default function Button({ variant = "primary", size = "md", className = "", type = "button", ...rest }: Props) {
-  return (
-    <button
-      type={type}
-      className={`rounded-md text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
-      {...rest}
-    />
-  );
+  return <button type={type} className={`${buttonStyles(variant, size)} ${className}`} {...rest} />;
 }
