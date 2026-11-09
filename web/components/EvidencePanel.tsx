@@ -59,6 +59,10 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
     const decide = onDecide;
     function onKey(event: KeyboardEvent) {
       if (editing) return; // while typing a correction, letters are just letters
+      // ...and the same for ANY typing box on the page (e.g. the Properties field above):
+      // typing "activation" must not press A and accept a value
+      const target = event.target as HTMLElement | null;
+      if (target !== null && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       const key = event.key.toLowerCase();
       if (key === "j") nav.onNext();
       else if (key === "k") nav.onPrevious();

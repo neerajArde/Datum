@@ -1,4 +1,6 @@
 // components/Workspace.tsx
+// The whole thread: the composer on top, and once Extract is clicked, the results below
+// (download bar, triage, then the table or review mode).
 // Holds the review session: every decision made, and which values are being reviewed.
 // Shows the triage bar on top, then either review mode (the evidence panel in focus size,
 // one value at a time) or the full results table (the same panel in compact size).
@@ -11,6 +13,7 @@ import type { Row, Status } from "@/lib/types";
 import type { Decision, Decisions } from "@/lib/review";
 import TriageBar from "./TriageBar";
 import ExportBar from "./ExportBar";
+import Composer from "./Composer";
 import EvidencePanel from "./EvidencePanel";
 import ResultsTable from "./ResultsTable";
 import Button from "./ui/Button";
@@ -24,6 +27,8 @@ export default function Workspace({ rows }: { rows: Row[] }) {
   const [position, setPosition] = useState(0);
   // STATE: should the download include values still waiting for review? Default: no (verified only).
   const [includeReview, setIncludeReview] = useState(false);
+  // STATE: has Extract been clicked? PROTOTYPE: it then shows the sample rows; the backend will run the real pipeline.
+  const [extracted, setExtracted] = useState(false);
 
   // record a decision. A NEW object, so React notices the change.
   function record(id: string, decision: Decision) {
@@ -53,35 +58,41 @@ export default function Workspace({ rows }: { rows: Row[] }) {
 
   return (
     <div className="space-y-6">
-      {/* the fast path first: most researchers just want the table */}
-      <ExportBar rows={rows} decisions={decisions} includeReview={includeReview} onIncludeReviewChange={setIncludeReview} />
+      {/* ONE composer, always in the same spot. (Rendering it in two different places would make React
+          treat them as two different composers, and the added papers would vanish on Extract.) */}
+      <Composer onExtract={() => setExtracted(true)} />
 
-      <TriageBar
-        rows={rows}
-        decisions={decisions}
-        onSpotCheck={startSpotCheck}
-        onReview={startReview}
-      />
+      {/* everything below appears once Extract has been clicked */}
+      {extracted && (
+        <>
+          <p className="text-sm text-soft">Showing sample results. The real extraction arrives with the backend.</p>
 
-      {queue === null ? (
-        <ResultsTable rows={rows} decisions={decisions} onDecide={record} />
-      ) : current !== undefined ? (
-        <EvidencePanel
-          // key: a new row = a fresh panel, so its edit box and "more notes" start closed
-          key={current.id}
-          row={current}
-          decision={decisions[current.id]}
-          onDecide={(decision) => decideAndAdvance(current.id, decision)}
-          review={{
-            position: position + 1,
-            total: queue.length,
-            onPrevious: () => setPosition(Math.max(0, position - 1)),
-            onNext: () => setPosition(Math.min(queue.length, position + 1)),
-            onExit: () => setQueue(null),
-          }}
-        />
-      ) : (
-        <DoneCard queue={queue} decisions={decisions} onBack={() => setQueue(null)} />
+          {/* the fast path first: most researchers just want the table */}
+          <ExportBar rows={rows} decisions={decisions} includeReview={includeReview} onIncludeReviewChange={setIncludeReview} />
+
+          <TriageBar rows={rows} decisions={decisions} onSpotCheck={startSpotCheck} onReview={startReview} />
+
+          {queue === null ? (
+            <ResultsTable rows={rows} decisions={decisions} onDecide={record} />
+          ) : current !== undefined ? (
+            <EvidencePanel
+              // key: a new row = a fresh panel, so its edit box and "more notes" start closed
+              key={current.id}
+              row={current}
+              decision={decisions[current.id]}
+              onDecide={(decision) => decideAndAdvance(current.id, decision)}
+              review={{
+                position: position + 1,
+                total: queue.length,
+                onPrevious: () => setPosition(Math.max(0, position - 1)),
+                onNext: () => setPosition(Math.min(queue.length, position + 1)),
+                onExit: () => setQueue(null),
+              }}
+            />
+          ) : (
+            <DoneCard queue={queue} decisions={decisions} onBack={() => setQueue(null)} />
+          )}
+        </>
       )}
     </div>
   );
