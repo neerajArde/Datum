@@ -11,6 +11,8 @@ import type { Row } from "@/lib/types";
 import { notesFor, verdictFor, type Decision, type Level } from "@/lib/review";
 import { splitAtValue } from "@/lib/highlight";
 import StatusBadge from "./StatusBadge";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
 
 // Only passed in review mode. Its presence is what switches the panel to "focus".
 export type ReviewNav = {
@@ -29,12 +31,12 @@ type Props = {
 };
 
 const VERDICT_STYLE = {
-  good: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  careful: "border-amber-200 bg-amber-50 text-amber-900",
-  stop: "border-red-200 bg-red-50 text-red-900",
+  good: "border-verified-line bg-verified-bg text-verified-ink",
+  careful: "border-review-line bg-review-bg text-review-ink",
+  stop: "border-flagged-line bg-flagged-bg text-flagged-ink",
 };
 const VERDICT_ICON = { good: "✅", careful: "⚠️", stop: "⛔" };
-const LEVEL_DOT: Record<Level, string> = { blocker: "bg-red-500", caution: "bg-amber-500", info: "bg-zinc-300" };
+const LEVEL_DOT: Record<Level, string> = { blocker: "bg-flagged", caution: "bg-review", info: "bg-line-strong" };
 
 export default function EvidencePanel({ row, decision, onDecide, review }: Props) {
   const focus = review !== undefined;
@@ -75,7 +77,7 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
   // nothing selected yet (table view): a gentle hint instead of an empty box
   if (row === null) {
     return (
-      <aside className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-500">
+      <aside className="rounded-xl border border-dashed border-line-strong p-6 text-sm text-soft">
         Select a row to see where its value came from.
       </aside>
     );
@@ -101,13 +103,13 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
   }
 
   return (
-    <aside className={`space-y-4 rounded-xl border border-zinc-200 bg-white ${focus ? "p-6" : "p-5"}`}>
+    <Card as="aside" className={`space-y-4 ${focus ? "p-6" : "p-5"}`}>
       {/* review mode only: back link and place in the queue */}
       {review !== undefined && (
-        <div className="flex items-center justify-between text-sm text-zinc-500">
-          <button type="button" onClick={review.onExit} className="hover:text-zinc-900">
+        <div className="flex items-center justify-between text-sm text-soft">
+          <Button variant="ghost" onClick={review.onExit} size="inline">
             ← Back to table
-          </button>
+          </Button>
           <span>
             {review.position} of {review.total} · <kbd className="font-mono">K</kbd> ↑ <kbd className="font-mono">J</kbd> ↓
           </span>
@@ -117,19 +119,19 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
       {/* 1. the answer: what was found */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-soft">
             {row.material} · {row.property}
           </p>
-          <p className={`font-semibold tracking-tight text-zinc-900 ${focus ? "text-3xl" : "text-2xl"}`}>
+          <p className={`font-semibold tracking-tight text-ink ${focus ? "text-3xl" : "text-2xl"}`}>
             {decision?.kind === "edited" ? (
               <>
-                <span className="text-zinc-400 line-through">{row.value}</span> {decision.value}
+                <span className="text-faint line-through">{row.value}</span> {decision.value}
               </>
             ) : (
               row.value
             )}
-            {row.error !== "" && <span className="text-zinc-600"> ± {row.error}</span>}
-            <span className="ml-2 text-base font-normal text-zinc-500">{row.unit}</span>
+            {row.error !== "" && <span className="text-muted"> ± {row.error}</span>}
+            <span className="ml-2 text-base font-normal text-soft">{row.unit}</span>
           </p>
         </div>
         <StatusBadge status={row.status} />
@@ -141,8 +143,8 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
       </p>
 
       {extraNotes.length > 0 && (
-        <div className="text-sm text-zinc-600">
-          <button type="button" onClick={() => setShowAll(!showAll)} className="text-zinc-500 hover:text-zinc-900">
+        <div className="text-sm text-muted">
+          <button type="button" onClick={() => setShowAll(!showAll)} className="text-soft hover:text-ink">
             {showAll ? "▾" : "▸"} {extraNotes.length} more {extraNotes.length === 1 ? "note" : "notes"}
           </button>
           {showAll && (
@@ -159,13 +161,13 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
       )}
 
       {/* 3. the proof: for now the quote in a page-style box; the real PDF page comes with the backend */}
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-1">
-        <p className="px-3 pt-2 text-xs text-zinc-500">
+      <div className="rounded-lg border border-line bg-subtle p-1">
+        <p className="px-3 pt-2 text-xs text-soft">
           Page {row.page} of {row.paper}
           {row.origin === "cited" && row.reference !== "" && <> · from reference [{row.reference}]</>}
         </p>
         <blockquote
-          className={`m-2 rounded bg-white p-4 font-serif leading-relaxed text-zinc-800 shadow-sm ${
+          className={`m-2 rounded bg-surface p-4 font-serif leading-relaxed text-body shadow-sm ${
             focus ? "text-base" : "text-sm"
           }`}
         >
@@ -174,7 +176,7 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
           ) : (
             <>
               {parts[0]}
-              <mark className="rounded bg-yellow-200 px-0.5 text-zinc-900">{parts[1]}</mark>
+              <mark className="rounded bg-highlight px-0.5 text-ink">{parts[1]}</mark>
               {parts[2]}
             </>
           )}
@@ -183,9 +185,9 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
 
       {/* 4. decide */}
       {onDecide !== undefined && quiet && (
-        <button type="button" onClick={() => setReporting(true)} className="text-sm text-zinc-500 hover:text-zinc-900">
+        <Button variant="ghost" onClick={() => setReporting(true)} size="inline" className="font-normal">
           ⋯ Report a problem with this value
-        </button>
+        </Button>
       )}
       {onDecide !== undefined &&
         !quiet &&
@@ -205,11 +207,11 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
                 if (event.key === "Escape") setEditing(false);
               }}
               aria-label="Corrected value"
-              className="min-w-0 flex-1 rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm"
+              className="min-w-0 flex-1 rounded-md border border-line-strong px-3 py-2 font-mono text-sm"
             />
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+            <Button type="submit" size="lg">
               Save
-            </button>
+            </Button>
           </form>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -219,8 +221,8 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
           </div>
         ))}
 
-      <p className="text-xs text-zinc-400">Extracted by {row.provider}</p>
-    </aside>
+      <p className="text-xs text-faint">Extracted by {row.provider}</p>
+    </Card>
   );
 }
 
@@ -231,11 +233,11 @@ function ActionButton(props: { label: string; shortcut?: string; onClick: () => 
       type="button"
       onClick={props.onClick}
       className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium ${
-        props.active ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+        props.active ? "border-ink bg-ink text-white" : "border-line-strong text-body hover:bg-subtle"
       }`}
     >
       {props.shortcut !== undefined && (
-        <kbd className={`rounded px-1.5 font-mono text-xs ${props.active ? "bg-white/20" : "bg-zinc-100"}`}>{props.shortcut}</kbd>
+        <kbd className={`rounded px-1.5 font-mono text-xs ${props.active ? "bg-surface/20" : "bg-subtle-strong"}`}>{props.shortcut}</kbd>
       )}
       {props.label}
     </button>

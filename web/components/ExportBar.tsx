@@ -6,6 +6,8 @@
 import type { Row } from "@/lib/types";
 import type { Decisions } from "@/lib/review";
 import { downloadCsv, exportSummary, toCsv } from "@/lib/export";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
 
 type Props = {
   rows: Row[];
@@ -26,14 +28,14 @@ export default function ExportBar({ rows, decisions, includeReview, onIncludeRev
   }
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white px-5 py-4">
+    <Card as="section" className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
       <div className="space-y-1 text-sm">
-        <p className="text-zinc-900">
+        <p className="text-ink">
           <span className="font-semibold">{summary.included} values</span> in your download
           {summary.reviewLeftOut > 0 && (
             <>
               {" · "}
-              <span className="text-amber-800">{summary.reviewLeftOut} left out for review</span>{" "}
+              <span className="text-review-ink">{summary.reviewLeftOut} left out for review</span>{" "}
               <button type="button" onClick={() => onIncludeReviewChange(true)} className="font-medium underline underline-offset-2">
                 Include them
               </button>
@@ -42,7 +44,7 @@ export default function ExportBar({ rows, decisions, includeReview, onIncludeRev
           {summary.reviewIncluded > 0 && (
             <>
               {" · "}
-              <span className="text-amber-800">including {summary.reviewIncluded} still to review</span> (marked in the status column){" "}
+              <span className="text-review-ink">including {summary.reviewIncluded} still to review</span> (marked in the status column){" "}
               <button type="button" onClick={() => onIncludeReviewChange(false)} className="font-medium underline underline-offset-2">
                 Leave them out
               </button>
@@ -50,19 +52,14 @@ export default function ExportBar({ rows, decisions, includeReview, onIncludeRev
           )}
         </p>
         {summary.flaggedLeftOut > 0 && (
-          <p className="text-zinc-500">
+          <p className="text-soft">
             {summary.flaggedLeftOut} flagged {summary.flaggedLeftOut === 1 ? "value" : "values"} left out (likely wrong)
           </p>
         )}
       </div>
-      <button
-        type="button"
-        onClick={download}
-        disabled={summary.included === 0}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-30"
-      >
+      <Button onClick={download} disabled={summary.included === 0} size="lg">
         Download CSV
-      </button>
-    </section>
+      </Button>
+    </Card>
   );
 }

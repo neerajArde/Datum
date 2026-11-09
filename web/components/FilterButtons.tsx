@@ -23,7 +23,7 @@ type Props = {
 
 export default function FilterButtons({ selected, counts, onPick }: Props) {
   return (
-    <div className="inline-flex gap-1 rounded-lg border border-zinc-200 bg-white p-1">
+    <div className="inline-flex gap-1 rounded-lg border border-line bg-surface p-1">
       {OPTIONS.map((option) => {
         const isOn = option.value === selected;
         return (
@@ -32,11 +32,11 @@ export default function FilterButtons({ selected, counts, onPick }: Props) {
             type="button"
             onClick={() => onPick(option.value)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              isOn ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+              isOn ? "bg-ink text-white" : "text-muted hover:bg-subtle-strong"
             }`}
           >
             {option.label}
-            <span className={`ml-1.5 ${isOn ? "text-zinc-300" : "text-zinc-400"}`}>
+            <span className={`ml-1.5 ${isOn ? "text-faint" : "text-faint"}`}>
               {counts[option.value]}
             </span>
           </button>
