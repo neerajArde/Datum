@@ -1,7 +1,7 @@
 // components/Composer.tsx
 // The first thing a researcher sees: which properties to extract, which papers to read, and Extract.
-// It only collects the inputs. What happens on Extract is the parent's job (onExtract),
-// so when the backend arrives, only the parent changes.
+// It doesn't keep the properties or papers itself: they belong to the thread (passed in as props),
+// so switching threads and coming back finds them exactly as left. What happens on Extract is the parent's job.
 
 "use client";
 
@@ -11,14 +11,17 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 
 type Props = {
-  onExtract: (input: { properties: string; papers: Paper[] }) => void;
+  properties: string;
+  papers: Paper[];
+  onPropertiesChange: (properties: string) => void;
+  onPapersChange: (papers: Paper[]) => void;
+  onExtract: () => void;
   busy?: boolean; // true while a run is in progress: Extract is disabled so it can't be double-clicked
+  stale?: boolean; // true when papers or properties changed since the last run
 };
 
-export default function Composer({ onExtract, busy = false }: Props) {
-  // STATE: what the researcher typed, the papers they added, drag-over highlight, and skip messages
-  const [properties, setProperties] = useState("");
-  const [papers, setPapers] = useState<Paper[]>([]);
+export default function Composer({ properties, papers, onPropertiesChange, onPapersChange, onExtract, busy = false, stale = false }: Props) {
+  // STATE: only things that don't belong to the thread: the drag-over highlight and skip messages
   const [dragging, setDragging] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
 
@@ -28,7 +31,7 @@ export default function Composer({ onExtract, busy = false }: Props) {
   function add(files: FileList | null) {
     if (files === null) return;
     const result = addPapers(papers, Array.from(files));
-    setPapers(result.papers);
+    onPapersChange(result.papers);
     setSkipped(result.skipped);
   }
 
@@ -45,7 +48,7 @@ export default function Composer({ onExtract, busy = false }: Props) {
         <input
           id="properties"
           value={properties}
-          onChange={(event) => setProperties(event.target.value)}
+          onChange={(event) => onPropertiesChange(event.target.value)}
           placeholder="e.g. μC*, volumetric capacitance C*, electrical conductivity"
           className="w-full rounded-md border border-line bg-subtle px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:bg-surface focus:outline-none"
         />
@@ -64,7 +67,7 @@ export default function Composer({ onExtract, busy = false }: Props) {
                 <span className="shrink-0 text-xs text-soft">{formatSize(paper.file.size)}</span>
                 <button
                   type="button"
-                  onClick={() => setPapers(papers.filter((p) => p.id !== paper.id))}
+                  onClick={() => onPapersChange(papers.filter((p) => p.id !== paper.id))}
                   aria-label={`Remove ${paper.file.name}`}
                   className="shrink-0 rounded px-1.5 text-soft hover:bg-subtle-strong hover:text-ink"
                 >
@@ -117,7 +120,10 @@ export default function Composer({ onExtract, busy = false }: Props) {
       {/* 3. go */}
       <div className="flex items-center justify-end gap-3">
         {!ready && <span className="text-sm text-faint">Add at least one paper</span>}
-        <Button size="lg" disabled={!ready || busy} onClick={() => onExtract({ properties: properties.trim(), papers })}>
+        {ready && stale && !busy && (
+          <span className="text-sm text-review-ink">Papers or properties changed since the last run. Extract again to update the results.</span>
+        )}
+        <Button size="lg" disabled={!ready || busy} onClick={onExtract}>
           {busy ? "Extracting…" : extractAll ? "Extract all" : "Extract"}
         </Button>
       </div>
