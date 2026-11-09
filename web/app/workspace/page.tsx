@@ -12,7 +12,7 @@ export default function WorkspacePage() {
       <p className="text-sm text-soft">Prototype · results use sample data until the backend exists</p>
       <h1 className="mb-8 text-2xl font-semibold tracking-tight text-ink">Demo thread</h1>
       {/* the rows go in as a PROP */}
-      <Workspace rows={[...sampleRows, ...demoRows]} />
+      <Workspace sampleRows={[...sampleRows, ...demoRows]} />
     </main>
   );
 }
