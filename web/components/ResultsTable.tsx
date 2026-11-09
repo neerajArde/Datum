@@ -94,11 +94,11 @@ export default function ResultsTable({ rows, decisions = {}, onDecide }: Props) 
                       <td className="px-3 py-3 text-zinc-600">{row.property}</td>
                       <td className="px-3 py-3 text-zinc-900">
                         <span className="font-mono">{row.value}</span>
-                        {row.error !== "" && <span className="font-mono text-zinc-500"> ± {row.error}</span>}
+                        {row.error !== "" && <span className="font-mono text-zinc-600"> ± {row.error}</span>}
                         <span className="ml-1.5 text-xs text-zinc-500">{row.unit}</span>
                       </td>
                       <td className="px-3 py-3 text-zinc-600">p. {row.page}</td>
-                      <td className="px-3 py-3 text-zinc-600">{describe(decisions[row.id])}</td>
+                      <td className="px-3 py-3 text-zinc-600">{describe(row, decisions[row.id])}</td>
                     </tr>
                   );
                 })}
@@ -123,8 +123,8 @@ export default function ResultsTable({ rows, decisions = {}, onDecide }: Props) 
 }
 
 // a short label for the Decision column
-function describe(decision: Decisions[string] | undefined): string {
-  if (decision === undefined) return "—";
+function describe(row: Row, decision: Decisions[string] | undefined): string {
+  if (decision === undefined) return row.status === "verified" ? "✓ auto" : "—";
   if (decision.kind === "accepted") return "✓ accepted";
   if (decision.kind === "rejected") return "✕ rejected";
   return `✎ ${decision.value}`;

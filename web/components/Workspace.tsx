@@ -31,21 +31,13 @@ export default function Workspace({ rows }: { rows: Row[] }) {
     setPosition(position + 1);
   }
 
-  function acceptAllVerified() {
-    const next = { ...decisions };
-    for (const row of rows) {
-      if (row.status === "verified" && !next[row.id]) next[row.id] = { kind: "accepted" };
-    }
-    setDecisions(next);
-  }
-
   function startReview(statuses: Status[]) {
     setQueue(rows.filter((row) => statuses.includes(row.status) && !decisions[row.id]).map((row) => row.id));
     setPosition(0);
   }
 
   function startSpotCheck() {
-    // 5 random verified values nobody has decided on yet
+    // 5 random verified values the researcher hasn't touched yet, to confirm "verified" can be trusted
     const open = rows.filter((row) => row.status === "verified" && !decisions[row.id]);
     const shuffled = [...open].sort(() => Math.random() - 0.5);
     setQueue(shuffled.slice(0, 5).map((row) => row.id));
@@ -59,7 +51,6 @@ export default function Workspace({ rows }: { rows: Row[] }) {
       <TriageBar
         rows={rows}
         decisions={decisions}
-        onAcceptAllVerified={acceptAllVerified}
         onSpotCheck={startSpotCheck}
         onReview={startReview}
       />

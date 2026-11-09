@@ -21,7 +21,9 @@ export type Decisions = Record<string, Decision>; // row id -> decision
 const CHECK_RULES: { contains: string; level: Level; text: string }[] = [
   { contains: "evidence not found", level: "blocker", text: "The quote wasn't found in the paper, so this value may be invented." },
   { contains: "value not in evidence", level: "blocker", text: "The number isn't in the quoted text. It may be misread or invented." },
-  { contains: "doesn't fit this property", level: "blocker", text: "The unit doesn't fit this property, so it may be a different measurement." },
+  // amber, not red: the checker still misreads some column names (e.g. [μOECT][C*]), and a false
+  // red alarm teaches people to ignore red. Back to red once the checker is fixed.
+  { contains: "doesn't fit this property", level: "caution", text: "The unit doesn't look like this property's usual unit. Check it's the same kind of measurement." },
   { contains: "no value", level: "blocker", text: "No value was extracted." },
   { contains: "value is not a single number", level: "caution", text: "This isn't a single number. Decide what to record." },
   { contains: "error value not in evidence", level: "caution", text: "The ± error isn't in the quote." },
@@ -76,14 +78,22 @@ function wordingNotes(row: Row): Note[] {
 const ORDER: Record<Level, number> = { blocker: 0, caution: 1, info: 2 };
 
 export function notesFor(row: Row): Note[] {
+  // order inside each level: wording traps first, then the checker's findings,
+  // and "cited" last, because where a number came from is the weakest reason to doubt it
   const notes: Note[] = [...wordingNotes(row)];
-  if (row.origin === "cited") {
-    const ref = row.reference !== "" ? ` (reference [${row.reference}])` : "";
-    notes.push({ level: "caution", text: `Quoted from another paper${ref}. The original source is the better citation.` });
-  }
   for (const check of row.checks) {
     const note = noteForCheck(check);
     if (note !== null && !notes.some((n) => n.text === note.text)) notes.push(note);
+  }
+  if (row.origin === "cited") {
+    const ref = row.reference !== "" ? ` (reference [${row.reference}])` : "";
+    // Where a number ORIGINALLY came from is not a doubt about whether we copied it right.
+    // On a verified row it's just a fact (info); on a doubtful row it's one more reason to look (caution).
+    notes.push(
+      row.status === "verified"
+        ? { level: "info", text: `Originally reported in another paper${ref}. Datum checked it against this paper.` }
+        : { level: "caution", text: `Quoted from another paper${ref}. The original source is the better citation.` },
+    );
   }
   // stable sort: blockers first, then cautions, then info
   return notes.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
@@ -100,5 +110,16 @@ export function verdictFor(row: Row, notes: Note[]): Verdict {
   if (first !== undefined && first.level === "caution") {
     return { tone: "careful", text: `Check before using. ${first.text}` };
   }
-  return { tone: "good", text: "Matches the paper exactly. Safe to accept." };
+  const origin = row.origin === "cited" && row.reference !== "" ? ` Originally from reference [${row.reference}].` : "";
+  return { tone: "good", text: `Matches the paper exactly.${origin}` };
+}
+
+// Verified rows count as accepted unless the researcher decided otherwise.
+// Only review and flagged rows ever NEED a decision.
+export function needsDecision(row: Row): boolean {
+  return row.status !== "verified";
+}
+
+export function effectiveDecision(row: Row, decisions: Decisions): Decision | undefined {
+  return decisions[row.id] ?? (row.status === "verified" ? { kind: "accepted" } : undefined);
 }

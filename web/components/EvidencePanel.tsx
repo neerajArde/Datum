@@ -44,6 +44,8 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row?.value ?? "");
   const [showAll, setShowAll] = useState(false);
+  // beside the table, verified rows hide their buttons until "Report a problem" is clicked
+  const [reporting, setReporting] = useState(false);
 
   // Keyboard shortcuts, ONLY in review mode (so a stray key in the table never rejects a value).
   // useEffect = "do this outside of drawing": listen for keys while the panel is on screen,
@@ -84,6 +86,10 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
   const extraNotes = notes.slice(1); // the first note is already in the verdict
   const parts = splitAtValue(row.evidence, row.value);
 
+  // Verified rows are accepted automatically, so beside the table they show no buttons,
+  // just a quiet "Report a problem". In review mode (e.g. a spot-check) buttons always show.
+  const quiet = !focus && row.status === "verified" && !reporting && decision === undefined;
+
   function startEdit() {
     setDraft(row?.value ?? "");
     setEditing(true);
@@ -122,7 +128,7 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
             ) : (
               row.value
             )}
-            {row.error !== "" && <span className="text-zinc-500"> ± {row.error}</span>}
+            {row.error !== "" && <span className="text-zinc-600"> ± {row.error}</span>}
             <span className="ml-2 text-base font-normal text-zinc-500">{row.unit}</span>
           </p>
         </div>
@@ -176,7 +182,13 @@ export default function EvidencePanel({ row, decision, onDecide, review }: Props
       </div>
 
       {/* 4. decide */}
+      {onDecide !== undefined && quiet && (
+        <button type="button" onClick={() => setReporting(true)} className="text-sm text-zinc-500 hover:text-zinc-900">
+          ⋯ Report a problem with this value
+        </button>
+      )}
       {onDecide !== undefined &&
+        !quiet &&
         (editing ? (
           <form
             className="flex gap-2"
