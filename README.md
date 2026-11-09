@@ -12,6 +12,17 @@ Researchers build datasets by copying measurements out of papers by hand. It's s
 
 Built at HackPSU Fall 2026 by team **Ground Truth**.
 
+## Project layout
+
+```
+engine/        the core, in Python: read PDFs, filter, extract with AI, verify, build the table
+  tests/       engine tests (fake AI, no keys needed)
+web/           Datum v2 frontend: Next.js + React + TypeScript (in progress, sample data for now)
+app.py, ui.py, threads.py   Datum v1: the Streamlit app (live until v2 replaces it)
+tests/         tests for the v1 app's saved threads
+docs/          the v1 landing page (GitHub Pages)
+```
+
 ## How it works
 
 ```
@@ -21,13 +32,13 @@ PDFs → 1 Ingest → 2 Filter + chunk → 3 Extract (parallel) → 4 Verify →
                               Gemini → Claude → OpenAI
 ```
 
-1. **Ingest** (`ingest.py`): reads each PDF page by page and fingerprints it by content.
-2. **Filter + chunk** (`ingest.py`): skips pages that never mention a target property (references, acknowledgements) and groups the rest a few pages per AI call, with `=== PAGE n ===` markers.
-3. **Extract** (`pipeline.py`, `providers.py`, `prompt.py`): runs chunks from all papers in parallel. The router tries Gemini first. If a provider is busy (429/503/timeout), it cools down and the router hops to the next. If a provider is broken (bad key or model), it's switched off for the run. If an answer gets cut off, the chunk is split in half and retried.
-4. **Verify** (`verify.py`, `units.py`): no LLM here. It checks that the evidence exists in the paper (fixing wrong page numbers), that the value is inside the evidence, the material, unit and origin, and converts units to a standard form.
-5. **Results** (`app.py`, `highlight.py`, `evaluate.py`): a filterable table, click-to-source page highlighting, CSV export, and an accuracy check against a hand-made answer key.
+1. **Ingest** (`engine/ingest.py`): reads each PDF page by page and fingerprints it by content.
+2. **Filter + chunk** (`engine/ingest.py`): skips pages that never mention a target property (references, acknowledgements) and groups the rest a few pages per AI call, with `=== PAGE n ===` markers.
+3. **Extract** (`engine/pipeline.py`, `engine/providers.py`, `engine/prompt.py`): runs chunks from all papers in parallel. The router tries Gemini first. If a provider is busy (429/503/timeout), it cools down and the router hops to the next. If a provider is broken (bad key or model), it's switched off for the run. If an answer gets cut off, the chunk is split in half and retried.
+4. **Verify** (`engine/verify.py`, `engine/units.py`): no LLM here. It checks that the evidence exists in the paper (fixing wrong page numbers), that the value is inside the evidence, the material, unit and origin, and converts units to a standard form.
+5. **Results** (`app.py`, `engine/highlight.py`, `engine/evaluate.py`): a filterable table, click-to-source page highlighting, CSV export, and an accuracy check against a hand-made answer key.
 
-Answers are cached by paper content (`cache.py`), so re-running a paper is instant and makes no API calls.
+Answers are cached by paper content (`engine/cache.py`), so re-running a paper is instant and makes no API calls.
 
 ## Run it
 
@@ -49,10 +60,13 @@ On Streamlit Community Cloud, put the same keys in the app's **Secrets**.
 ## Tests
 
 ```bash
-python -m pytest -q
+python -m pytest -q          # from the repo root: engine + v1 tests
+cd web && npm run lint && npm run build   # frontend checks
 ```
 
-The tests use a fake LLM, so they need no key and no internet. They cover provider fallback, hallucination flagging, page correction, unit conversion, caching, cut-off answers and the accuracy report.
+GitHub Actions runs both on every pull request (`.github/workflows/ci.yml`).
+
+The engine tests use a fake LLM, so they need no key and no internet. They cover provider fallback, hallucination flagging, page correction, unit conversion, caching, cut-off answers and the accuracy report.
 
 ## Accuracy check
 

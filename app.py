@@ -15,14 +15,14 @@ import zlib
 import pandas as pd
 import streamlit as st
 
-import pipeline
-import suggest
+from engine import pipeline
+from engine import suggest
 import threads
 import ui
-from evaluate import evaluate, read_answer_key
-from highlight import render_evidence
-from providers import HEDGE_SECONDS, build_providers
-from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
+from engine.evaluate import evaluate, read_answer_key
+from engine.highlight import render_evidence
+from engine.providers import HEDGE_SECONDS, build_providers
+from engine.schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED
 
 st.set_page_config(page_title="Datum", page_icon="◆", layout="wide", initial_sidebar_state="expanded")
 st.markdown(ui.CSS, unsafe_allow_html=True)

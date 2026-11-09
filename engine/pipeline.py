@@ -9,13 +9,13 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import cache
-from ingest import fingerprint, make_chunks, property_words, read_pages, split_chunk
-from prompt import build_prompt
-from providers import AllProvidersFailed, BadOutputError, ask, new_router
-from schema import clean_llm_row
-from text_tools import normalize
-from verify import verify_row
+from . import cache
+from .ingest import fingerprint, make_chunks, property_words, read_pages, split_chunk
+from .prompt import build_prompt
+from .providers import AllProvidersFailed, BadOutputError, ask, new_router
+from .schema import clean_llm_row
+from .text_tools import normalize
+from .verify import verify_row
 
 DEFAULT_WORKERS = 4
 

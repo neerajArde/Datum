@@ -17,9 +17,9 @@ import re
 
 from rapidfuzz import fuzz
 
-from schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED, TABLE_COLUMNS
-from text_tools import join_scientific, normalize, numbers_in, same_material_name, same_number, squash, to_number
-from units import expected_unit, standardize
+from .schema import STATUS_FLAGGED, STATUS_REVIEW, STATUS_VERIFIED, TABLE_COLUMNS
+from .text_tools import join_scientific, normalize, numbers_in, same_material_name, same_number, squash, to_number
+from .units import expected_unit, standardize
 
 # how similar (0-100) a property name must be to one of the user's target properties
 PROPERTY_MATCH_SCORE = 75

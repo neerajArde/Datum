@@ -1,0 +1,43 @@
+# .github/workflows/ci.yml
+# Continuous integration: on every pull request (and every push to main or dev), GitHub runs
+# all of Datum's checks on a fresh machine. A red ❌ on the PR means something broke.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  engine:
+    name: Python engine tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # fake AI engine: no API keys needed, nothing secret in CI
+      - run: python -m pytest -q
+
+  web:
+    name: Frontend type-check, lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx next typegen   # Next.js writes its own route types (like LayoutProps) first
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
