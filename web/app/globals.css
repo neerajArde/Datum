@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+  DATUM DESIGN TOKENS
+  Every color in the app comes from this list. Components use the NAMES (bg-surface, text-ink,
+  bg-verified...), never raw colors, so a full redesign later means editing only this block.
+  Tailwind turns each --color-x into classes like bg-x, text-x, border-x, ring-x.
+*/
+@theme {
+  /* surfaces */
+  --color-canvas: #f6f7f9; /*        page background */
+  --color-surface: #ffffff; /*       cards, panels */
+  --color-subtle: #fafafa; /*        quiet fills (table header, page box) */
+  --color-subtle-strong: #f1f1f3; /* hover / pressed fills */
+
+  /* lines */
+  --color-line-soft: #f1f1f3;
+  --color-line: #e4e4e7;
+  --color-line-strong: #d4d4d8;
+
+  /* text, darkest to lightest */
+  --color-ink: #18181b; /*           headings, primary buttons */
+  --color-ink-soft: #3f3f46; /*      primary button hover */
+  --color-body: #27272a; /*          long text (quotes) */
+  --color-muted: #52525b; /*         secondary text */
+  --color-soft: #71717a; /*          labels, hints */
+  --color-faint: #a1a1aa; /*         least important text */
+
+  /* statuses: a solid color (dots), a light background, a readable text color, a border */
+  --color-verified: #10b981;
+  --color-verified-bg: #ecfdf5;
+  --color-verified-ink: #047857;
+  --color-verified-line: #a7f3d0;
+
+  --color-review: #f59e0b;
+  --color-review-bg: #fffbeb;
+  --color-review-ink: #92400e;
+  --color-review-line: #fde68a;
+
+  --color-flagged: #ef4444;
+  --color-flagged-bg: #fef2f2;
+  --color-flagged-ink: #b91c1c;
+  --color-flagged-line: #fecaca;
+
+  /* the evidence highlight */
+  --color-highlight: #fef08a;
+  --color-highlight-soft: #fefce8;
+
+  /* fonts (loaded in app/layout.tsx) */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Light theme only for now; dark mode comes with the redesign. */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }

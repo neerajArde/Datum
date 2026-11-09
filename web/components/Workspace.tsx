@@ -13,6 +13,8 @@ import TriageBar from "./TriageBar";
 import ExportBar from "./ExportBar";
 import EvidencePanel from "./EvidencePanel";
 import ResultsTable from "./ResultsTable";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
 
 export default function Workspace({ rows }: { rows: Row[] }) {
   // STATE: every decision so far (row id -> decision)
@@ -91,15 +93,15 @@ function DoneCard(props: { queue: string[]; decisions: Decisions; onBack: () => 
   const count = (kind: Decision["kind"]) => kinds.filter((k) => k === kind).length;
   const skipped = kinds.filter((k) => k === undefined).length;
   return (
-    <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-8 text-center">
-      <p className="text-2xl font-semibold text-zinc-900">Review done</p>
-      <p className="text-sm text-zinc-600">
+    <Card as="section" className="space-y-4 p-8 text-center">
+      <p className="text-2xl font-semibold text-ink">Review done</p>
+      <p className="text-sm text-muted">
         {count("accepted")} accepted · {count("edited")} edited · {count("rejected")} rejected
         {skipped > 0 && <> · {skipped} skipped</>}
       </p>
-      <button type="button" onClick={props.onBack} className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+      <Button onClick={props.onBack} size="lg">
         Back to table
-      </button>
-    </section>
+      </Button>
+    </Card>
   );
 }

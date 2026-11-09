@@ -7,9 +7,9 @@ import type { Status } from "@/lib/types";
 // Record<Status, string> means: "one entry for EVERY status, no more, no less".
 // If we ever add a fourth status to types.ts, TypeScript makes us add its color here.
 const STYLES: Record<Status, string> = {
-  verified: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  review: "bg-amber-50 text-amber-800 ring-amber-600/20",
-  flagged: "bg-red-50 text-red-700 ring-red-600/20",
+  verified: "bg-verified-bg text-verified-ink ring-verified/30",
+  review: "bg-review-bg text-review-ink ring-review/30",
+  flagged: "bg-flagged-bg text-flagged-ink ring-flagged/30",
 };
 
 export default function StatusBadge({ status }: { status: Status }) {

@@ -9,8 +9,8 @@ import { demoRows, sampleRows } from "@/lib/sample-rows";
 export default function WorkspacePage() {
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
-      <p className="text-sm text-zinc-500">Sample run · 2 papers · review prototype</p>
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-zinc-900">Demo thread</h1>
+      <p className="text-sm text-soft">Sample run · 2 papers · review prototype</p>
+      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-ink">Demo thread</h1>
       {/* the rows go in as a PROP */}
       <Workspace rows={[...sampleRows, ...demoRows]} />
     </main>
